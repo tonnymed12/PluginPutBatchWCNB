@@ -64,7 +64,7 @@ height="100%">
                     <Input id="orderCantidadEscaneada" value="{orderSummary>/cantidadEscaneada}" enabled="false" width="100%"/>
                 </VBox>
                 <VBox width="15%">
-                    <Button id="lotesBoton" text="{i18n>lotes}" press=".onPressLotes" 
+                    <Button id="lotesBoton" text="{i18n>lotesAsignados}" press=".onPressOpenFragmentList" 
                     width="100px" class="sapUiSmallMarginBeginEnd" icon="sap-icon://list" />
                 </VBox>
 

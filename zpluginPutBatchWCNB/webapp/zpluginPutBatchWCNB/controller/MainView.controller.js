@@ -1,19 +1,20 @@
 sap.ui.define([
     'jquery.sap.global',
-	"sap/dm/dme/podfoundation/controller/PluginViewController",
-	"sap/ui/model/json/JSONModel",
+    "sap/dm/dme/podfoundation/controller/PluginViewController",
+    "sap/ui/model/json/JSONModel",
     "./Utils/Commons",
     "./Utils/ApiPaths",
     "../model/formatter",
     "sap/ui/core/Element",
-    "sap/m/MessageBox"
-], function (jQuery, PluginViewController, JSONModel, Commons, ApiPaths, formatter, Element, MessageBox) {
-	"use strict";
+    "sap/m/MessageBox",
+    "sap/ui/core/Fragment",
+], function (jQuery, PluginViewController, JSONModel, Commons, ApiPaths, formatter, Element, MessageBox, Fragment) {
+    "use strict";
 
     var gOperationPhase = {};
     const OPERATION_STATUS = { ACTIVE: "ACTIVE", QUEUED: "IN_QUEUE" }
 
-	return PluginViewController.extend("serviacero.custom.plugins.zpluginPutBatchWCNB.zpluginPutBatchWCNB.controller.MainView", {
+    return PluginViewController.extend("serviacero.custom.plugins.zpluginPutBatchWCNB.zpluginPutBatchWCNB.controller.MainView", {
         Commons: Commons,
         ApiPaths: ApiPaths,
         formatter: formatter,
@@ -1153,6 +1154,59 @@ sap.ui.define([
             }, 0);
 
             oOrderSummaryModel.setProperty("/cantidadEscaneada", Number(nScannedQty.toFixed(2)));
+        },
+        onPressOpenFragmentList: function () {
+            var planta = this.getView().getModel("ModeloPrincipal").getProperty("/PLANTA");
+            var usuario = this.getView().getModel("ModeloPrincipal").getProperty("/USUARIO");
+            var puesto = this.getView().getModel("ModeloPrincipal").getProperty("/WORK_CENTER");
+            var orden = this.byId("OrdersList").getSelectedItem().getBindingContext().getProperty("SHOP_ORDER");
+            var componente_pedido = this.byId("TablaListaComponentes").getSelectedItem().getBindingContext().getProperty("COMP_PEDIDO");
+            var componente_pos = this.byId("TablaListaComponentes").getSelectedItem().getBindingContext().getProperty("COMP_PEDIDO_POS");
+            var material = this.byId("TablaListaComponentes").getSelectedItem().getBindingContext().getProperty("MATERIAL");
+            var almacen = this.byId("TablaListaComponentes").getSelectedItem().getBindingContext().getProperty("STORAGE_LOCATION");
+            var oView = this.getView();
+            var oThis = this;
+            var oData = {
+                "ALMACEN": almacen,
+                "CD_PLANTA": planta,
+                "CD_PUESTO": puesto[0],
+                "ORDEN": orden,
+                "COMP_PEDIDO": componente_pedido,
+                "COMP_POS": componente_pos,
+                "MATERIAL": material,
+                "USUARIO": usuario
+            };
+            if (!this.byId("batchListDialog")) {
+                Fragment.load({
+                    id: oView.getId(),
+                    name: "sap.ui.demo.webapp.fragment.batchList",
+                    controller: this
+                }).then(function (oDialog) {
+                    oView.addDependent(oDialog);
+                    oDialog.open();
+                    oThis.enlistarInventario(oData);
+                });
+            } else {
+                this.byId("batchListDialog").open();
+                this.enlistarInventario(oData);
+            }
+        },
+
+        //Funcion que muestra la infomracion de la tabla de inventario 
+        enlistarInventario: function (oData) {
+
+            var path = "MII/DatosTransaccionales/Produccion/Pintura/Transaction/InventarioDisponible_Lista";
+            var tabla = "tbl_inventario";
+            var nombre = "Inventario";
+            this._base_onloadTable(tabla, oData, path, nombre, "");
+        },
+        onConfirmSendBatchChars:function () {
+            //logica de agregar 
+        },
+        //Funcion que cierra el fragmento de inventario almacen 
+        onCloseDialogBatchChars: function (oEvent) {
+
+            this.byId("batchListDialog").destroy();
         },
         getHeaderMaterial: function (sParams, oSapApi) {
             return new Promise((resolve, reject) => {
