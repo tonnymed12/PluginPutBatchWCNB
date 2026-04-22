@@ -1156,52 +1156,76 @@ sap.ui.define([
             oOrderSummaryModel.setProperty("/cantidadEscaneada", Number(nScannedQty.toFixed(2)));
         },
         onPressOpenFragmentList: function () {
-            var planta = this.getView().getModel("ModeloPrincipal").getProperty("/PLANTA");
-            var usuario = this.getView().getModel("ModeloPrincipal").getProperty("/USUARIO");
-            var puesto = this.getView().getModel("ModeloPrincipal").getProperty("/WORK_CENTER");
-            var orden = this.byId("OrdersList").getSelectedItem().getBindingContext().getProperty("SHOP_ORDER");
-            var componente_pedido = this.byId("TablaListaComponentes").getSelectedItem().getBindingContext().getProperty("COMP_PEDIDO");
-            var componente_pos = this.byId("TablaListaComponentes").getSelectedItem().getBindingContext().getProperty("COMP_PEDIDO_POS");
-            var material = this.byId("TablaListaComponentes").getSelectedItem().getBindingContext().getProperty("MATERIAL");
-            var almacen = this.byId("TablaListaComponentes").getSelectedItem().getBindingContext().getProperty("STORAGE_LOCATION");
             var oView = this.getView();
             var oThis = this;
-            var oData = {
-                "ALMACEN": almacen,
-                "CD_PLANTA": planta,
-                "CD_PUESTO": puesto[0],
-                "ORDEN": orden,
-                "COMP_PEDIDO": componente_pedido,
-                "COMP_POS": componente_pos,
-                "MATERIAL": material,
-                "USUARIO": usuario
-            };
+            var oPODParams = this.Commons.getPODParams(this.getOwnerComponent());
+            var oOrderSummaryModel = oView.getModel("orderSummary");
+            var sMaterial = oOrderSummaryModel ? oOrderSummaryModel.getProperty("/material") : "";
+            var nCantidadRequerida = oOrderSummaryModel ? oOrderSummaryModel.getProperty("/cantidadNecesaria") : 0;
+
+            if (!sMaterial) {
+                var oBundle = oView.getModel("i18n").getResourceBundle();
+                sap.m.MessageToast.show(oBundle.getText("errorObtenerHeaderMaterial", [""]));
+                return;
+            }
+
             if (!this.byId("batchListDialog")) {
                 Fragment.load({
                     id: oView.getId(),
-                    name: "sap.ui.demo.webapp.fragment.batchList",
+                    name: "serviacero.custom.plugins.zpluginPutBatchWCNB.zpluginPutBatchWCNB.fragment.batchList",
                     controller: this
                 }).then(function (oDialog) {
                     oView.addDependent(oDialog);
                     oDialog.open();
-                    oThis.enlistarInventario(oData);
+                    oThis.enlistarInventario(oPODParams.PLANT_ID, sMaterial, nCantidadRequerida);
                 });
             } else {
                 this.byId("batchListDialog").open();
-                this.enlistarInventario(oData);
+                this.enlistarInventario(oPODParams.PLANT_ID, sMaterial, nCantidadRequerida);
             }
         },
 
-        //Funcion que muestra la infomracion de la tabla de inventario 
-        enlistarInventario: function (oData) {
+        // Consulta inventarios disponibles por planta+material y puebla la tabla del fragmento
+        enlistarInventario: function (sPlant, sMaterial, nCantidadRequerida) {
+            var oView = this.getView();
+            var oSapApi = this.getPublicApiRestDataSourceUri();
+            var oBundle = oView.getModel("i18n").getResourceBundle();
+            var oDialog = this.byId("batchListDialog");
 
-            var path = "MII/DatosTransaccionales/Produccion/Pintura/Transaction/InventarioDisponible_Lista";
-            var tabla = "tbl_inventario";
-            var nombre = "Inventario";
-            this._base_onloadTable(tabla, oData, path, nombre, "");
-        },
-        onConfirmSendBatchChars:function () {
-            //logica de agregar 
+            if (!oDialog) { return; }
+
+            oDialog.setBusy(true);
+
+            var oParams = {
+                plant: sPlant,
+                material: sMaterial
+            };
+
+            this.ajaxGetRequest(oSapApi + this.ApiPaths.INVENTORIES, oParams,
+                function (oRes) {
+                    oDialog.setBusy(false);
+                    var aData = Array.isArray(oRes) ? oRes : ((oRes && Array.isArray(oRes.content)) ? oRes.content : []);
+
+                    var aItems = aData.map(function (oItem) {
+                        var sMat = (oItem.material && oItem.material.material) || sMaterial;
+                        var sLote = oItem.batch || oItem.batchNumber || "";
+                        var nCantidad = parseFloat(oItem.quantityOnHand || oItem.quantity || 0);
+                        return {
+                            MATERIAL: sMat,
+                            LOTE: sLote,
+                            CANTIDAD: nCantidad.toFixed(2),
+                            CANTIDADREQUERIDA: Number(nCantidadRequerida || 0).toFixed(2),
+                            CODIGO: sMat + "!" + sLote
+                        };
+                    });
+
+                    oDialog.setModel(new JSONModel({ ITEMS: aItems }));
+                }.bind(this),
+                function () {
+                    oDialog.setBusy(false);
+                    sap.m.MessageToast.show(oBundle.getText("errorObtenerDatosOriginales"));
+                }.bind(this)
+            );
         },
         //Funcion que cierra el fragmento de inventario almacen 
         onCloseDialogBatchChars: function (oEvent) {

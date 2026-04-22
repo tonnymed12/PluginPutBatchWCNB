@@ -3,22 +3,13 @@
 	xmlns:c="sap.ui.core"
   xmlns:l="sap.ui.layout">
 
-  <Dialog
-     id="batchListDialog"
-     title="{i18n>fragmentTitle}">
-    <l:VerticalLayout
-      class="sapUiContentPadding"
-      width="100%">
-      <l:content>
-        <Panel
-            width="100%"
-            class="sapUiResponsiveMargin sapUiNoContentPadding">
-          <content>
-            <Table
-                   id="list"
-                   class="sapUiResponsiveMargin"
-                   width="100%"
-                   items="{/ITEMS}">
+     	<TableSelectDialog
+          id="batchListDialog"
+          title="{i18n>fragmentTitle}"
+          items="{/ITEMS}"
+          cancel="onCloseDialogBatchChars"
+          confirm="onSelectBatch"
+     >
               <columns>
                 <Column>
                   <Label text="{i18n>material}"/>
@@ -39,34 +30,14 @@
               <items>
                 <ColumnListItem>
                   <cells>
-                    <Text text="{MATERIAL}"/> 
-                    <Text text="{LOTE}"/> 
-                    <Text text="{CANTIDAD}" /> 
-                    <Text text="{CANTIDADREQUERIDA}"/>   
-                    <Input type="Text" value="{CODIGO}"/>
+                    <Text text="{MATERIAL}" width="250px"/> 
+                    <Text text="{LOTE}" width="auto"/> 
+                    <Text text="{CANTIDAD}" width="auto"/> 
+                    <Text text="{CANTIDADREQUERIDA}" width="auto"/>   
+                    <Input type="Text" value="{CODIGO}" width="300px" enabled="false"/>
                   </cells>
                 </ColumnListItem>
               </items>
-            </Table>
-          </content>
-        </Panel>
-      </l:content>
-    </l:VerticalLayout>
 
-    <beginButton>
-      <Button
-       type="Accept"
-         text="{i18n>accept}"
-         icon="sap-icon://add-product"
-         press="onConfirmSendBatchChars"/>
-    </beginButton>
-    <endButton>
-      <Button
-         type="Reject"
-         text="{i18n>cancel}"
-         icon="sap-icon://cancel"
-         press="onCloseDialogBatchChars"/>
-    </endButton>
-
-  </Dialog>
+</TableSelectDialog>
 </c:FragmentDefinition>

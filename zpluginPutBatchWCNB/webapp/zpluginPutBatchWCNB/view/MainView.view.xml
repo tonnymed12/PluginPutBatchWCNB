@@ -65,9 +65,8 @@ height="100%">
                 </VBox>
                 <VBox width="15%">
                     <Button id="lotesBoton" text="{i18n>lotesAsignados}" press=".onPressOpenFragmentList" 
-                    width="100px" class="sapUiSmallMarginBeginEnd" icon="sap-icon://list" />
+                    class="sapUiSmallMarginBeginEnd sapUiSmallMarginTop" icon="sap-icon://list" />
                 </VBox>
-
             </HBox>
             
             <HBox width="97%" justifyContent="Center" class="sapUiSmallMarginTop sapUiSmallMarginBeginEnd">
