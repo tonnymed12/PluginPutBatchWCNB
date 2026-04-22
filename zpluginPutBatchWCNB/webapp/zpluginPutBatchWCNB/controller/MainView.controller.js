@@ -297,8 +297,8 @@ sap.ui.define([
             this.iSecuenciaCounter = 0;
 
             //se prepara los datos para hacer el update 
-            const slotTipo = oView.byId("slotType").getValue();
-            const slotQty = oView.byId("slotQty").getValue();
+            const slotTipo = oView.byId("slotType") ? oView.byId("slotType").getValue() : "";
+            const slotQty = oView.byId("slotQty") ? oView.byId("slotQty").getValue() : "";
 
             const aEdited = [
                 { attribute: "SLOTTIPO", value: slotTipo },
@@ -684,8 +684,8 @@ sap.ui.define([
                 oInput.setValue("");
                 oInput.focus();
 
-                const slotTipo = oView.byId("slotType").getValue();
-                const slotQty = oView.byId("slotQty").getValue();
+                const slotTipo = oView.byId("slotType") ? oView.byId("slotType").getValue() : "";
+                const slotQty = oView.byId("slotQty") ? oView.byId("slotQty").getValue() : "";
 
                 // Construir editados sobre datos frescos
                 const aEdited = [
@@ -820,8 +820,8 @@ sap.ui.define([
 
                 sap.m.MessageToast.show(oBundle.getText("loteEliminado"));
 
-                var slotTipo = oView.byId("slotType").getValue();
-                var slotQty = oView.byId("slotQty").getValue();
+                var slotTipo = oView.byId("slotType") ? oView.byId("slotType").getValue() : "";
+                var slotQty = oView.byId("slotQty") ? oView.byId("slotQty").getValue() : "";
 
                 var aEdited = [
                     { attribute: "SLOTTIPO", value: slotTipo },
@@ -985,8 +985,8 @@ sap.ui.define([
                 this._updateOrderSummaryScannedQty(aSlots);
 
                 const oView = this.getView();
-                const slotTipo = oView.byId("slotType").getValue();
-                const slotQty = oView.byId("slotQty").getValue();
+                const slotTipo = oView.byId("slotType") ? oView.byId("slotType").getValue() : "";
+                const slotQty = oView.byId("slotQty") ? oView.byId("slotQty").getValue() : "";
 
                 const aEdited = [
                     { attribute: "SLOTTIPO", value: slotTipo },
@@ -1186,7 +1186,7 @@ sap.ui.define([
             }
         },
 
-        // Consulta lotes disponibles para el material de la orden vía PP validateMaterialEnOrden
+        // Consulta lotes disponibles para el material de la orden vía PP getLotesMaterialStock
         enlistarInventario: function (sPlant, sOrden, sMaterial, nCantidadRequerida) {
             var oView = this.getView();
             var oSapApi = this.getPublicApiRestDataSourceUri();
@@ -1206,10 +1206,11 @@ sap.ui.define([
             this.ajaxPostRequest(oSapApi + this.ApiPaths.getLotesMaterialStock, oParams,
                 function (oRes) {
                     oDialog.setBusy(false);
-                    // El PP puede devolver el array directamente o envuelto en outLotes
+                    // El PP devuelve el array dentro de "stockResponse"
                     var aData = Array.isArray(oRes) ? oRes
+                        : (Array.isArray(oRes && oRes.stockResponse) ? oRes.stockResponse
                         : (Array.isArray(oRes && oRes.outLotes) ? oRes.outLotes
-                        : (Array.isArray(oRes && oRes.content) ? oRes.content : []));
+                        : (Array.isArray(oRes && oRes.content) ? oRes.content : [])));
 
                     var aItems = aData.map(function (oItem) {
                         var sMat = oItem.material;
