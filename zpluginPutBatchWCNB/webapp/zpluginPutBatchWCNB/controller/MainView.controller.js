@@ -1155,9 +1155,10 @@ sap.ui.define([
 
             oOrderSummaryModel.setProperty("/cantidadEscaneada", Number(nScannedQty.toFixed(2)));
         },
-        onPressOpenFragmentList: function () {
+        onPressOpenFragmentList: function (oEvent) {
             var oView = this.getView();
             var oThis = this;
+            var oSource = oEvent.getSource();
             var oPODParams = this.Commons.getPODParams(this.getOwnerComponent());
             var oOrderSummaryModel = oView.getModel("orderSummary");
             var sMaterial = oOrderSummaryModel ? oOrderSummaryModel.getProperty("/material") : "";
@@ -1174,19 +1175,19 @@ sap.ui.define([
                     id: oView.getId(),
                     name: "serviacero.custom.plugins.zpluginPutBatchWCNB.zpluginPutBatchWCNB.fragment.batchList",
                     controller: this
-                }).then(function (oDialog) {
-                    oView.addDependent(oDialog);
-                    oDialog.open();
-                    oThis.enlistarInventario(oPODParams.PLANT_ID, sMaterial, nCantidadRequerida);
+                }).then(function (oPopover) {
+                    oView.addDependent(oPopover);
+                    oPopover.openBy(oSource);
+                    oThis.enlistarInventario(oPODParams.PLANT_ID, oPODParams.ORDER_ID, sMaterial, nCantidadRequerida);
                 });
             } else {
-                this.byId("batchListDialog").open();
-                this.enlistarInventario(oPODParams.PLANT_ID, sMaterial, nCantidadRequerida);
+                this.byId("batchListDialog").openBy(oSource);
+                this.enlistarInventario(oPODParams.PLANT_ID, oPODParams.ORDER_ID, sMaterial, nCantidadRequerida);
             }
         },
 
-        // Consulta inventarios disponibles por planta+material y puebla la tabla del fragmento
-        enlistarInventario: function (sPlant, sMaterial, nCantidadRequerida) {
+        // Consulta lotes disponibles para el material de la orden vía PP validateMaterialEnOrden
+        enlistarInventario: function (sPlant, sOrden, sMaterial, nCantidadRequerida) {
             var oView = this.getView();
             var oSapApi = this.getPublicApiRestDataSourceUri();
             var oBundle = oView.getModel("i18n").getResourceBundle();
@@ -1197,24 +1198,27 @@ sap.ui.define([
             oDialog.setBusy(true);
 
             var oParams = {
-                plant: sPlant,
-                material: sMaterial
+                inPlanta: sPlant,
+                inOrden: sOrden,
+                inMaterial: sMaterial
             };
 
-            this.ajaxGetRequest(oSapApi + this.ApiPaths.INVENTORIES, oParams,
+            this.ajaxPostRequest(oSapApi + this.ApiPaths.getLotesMaterialStock, oParams,
                 function (oRes) {
                     oDialog.setBusy(false);
-                    var aData = Array.isArray(oRes) ? oRes : ((oRes && Array.isArray(oRes.content)) ? oRes.content : []);
+                    // El PP puede devolver el array directamente o envuelto en outLotes
+                    var aData = Array.isArray(oRes) ? oRes
+                        : (Array.isArray(oRes && oRes.outLotes) ? oRes.outLotes
+                        : (Array.isArray(oRes && oRes.content) ? oRes.content : []));
 
                     var aItems = aData.map(function (oItem) {
-                        var sMat = (oItem.material && oItem.material.material) || sMaterial;
-                        var sLote = oItem.batch || oItem.batchNumber || "";
-                        var nCantidad = parseFloat(oItem.quantityOnHand || oItem.quantity || 0);
+                        var sMat = oItem.material;
+                        var sLote = oItem.batchNumber;
+                        var nCantidad = parseFloat((oItem.quantityOnHand && oItem.quantityOnHand.value) || 0);
                         return {
                             MATERIAL: sMat,
                             LOTE: sLote,
                             CANTIDAD: nCantidad.toFixed(2),
-                            CANTIDADREQUERIDA: Number(nCantidadRequerida || 0).toFixed(2),
                             CODIGO: sMat + "!" + sLote
                         };
                     });
@@ -1227,9 +1231,30 @@ sap.ui.define([
                 }.bind(this)
             );
         },
+        onConfirmSendBatchChars: function () {
+            var oPopover = this.byId("batchListDialog");
+            if (oPopover) { oPopover.close(); }
+        },
+        onCopiarCodigo: function (oEvent) {
+            var oBundle = this.getView().getModel("i18n").getResourceBundle();
+            var oContext = oEvent.getSource().getBindingContext();
+            var sCodigo = oContext ? oContext.getProperty("CODIGO") : "";
+            if (!sCodigo) { return; }
+            navigator.clipboard.writeText(sCodigo).then(function () {
+                sap.m.MessageToast.show(oBundle.getText("codigoCopiado", [sCodigo]));
+            }).catch(function () {
+                // Fallback para navegadores sin soporte clipboard API
+                var oInput = document.createElement("input");
+                oInput.value = sCodigo;
+                document.body.appendChild(oInput);
+                oInput.select();
+                document.execCommand("copy");
+                document.body.removeChild(oInput);
+                sap.m.MessageToast.show(oBundle.getText("codigoCopiado", [sCodigo]));
+            });
+        },
         //Funcion que cierra el fragmento de inventario almacen 
         onCloseDialogBatchChars: function (oEvent) {
-
             this.byId("batchListDialog").destroy();
         },
         getHeaderMaterial: function (sParams, oSapApi) {

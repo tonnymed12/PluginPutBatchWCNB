@@ -69,8 +69,10 @@ sap.ui.define([],
 
          /** PRODUCTION PROCESS API CONSUMPTION TYPE : POST  getReservas*/
         getReservas: "/pe/api/v1/process/processDefinitions/start?key=REG_2d4c6e10-7d49-4052-9b61-fa9050a41ffa&async=false",
-
-        validateMaterialEnOrden: "/pe/api/v1/process/processDefinitions/start?key=REG_2f5eafc1-59aa-478b-b9d7-a8bcf1941ee8&async=false"
+          /** PRODUCTION PROCESS API CONSUMPTION TYPE : POST  validacionMaterial*/
+        validateMaterialEnOrden: "/pe/api/v1/process/processDefinitions/start?key=REG_2f5eafc1-59aa-478b-b9d7-a8bcf1941ee8&async=false",
+          /** PRODUCTION PROCESS API CONSUMPTION TYPE : POST  getLotesBom*/
+        getLotesMaterialStock: "/pe/api/v1/process/processDefinitions/start?key=REG_2aeb576a-f473-463a-923c-ea69224dcb6a&async=false"
 
     }
 });
