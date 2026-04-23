@@ -1205,6 +1205,7 @@ sap.ui.define([
 
             this.ajaxPostRequest(oSapApi + this.ApiPaths.getLotesMaterialStock, oParams,
                 function (oRes) {
+                    if (oDialog.bIsDestroyed) { return; }
                     oDialog.setBusy(false);
                     // El PP devuelve el array dentro de "stockResponse"
                     var aData = Array.isArray(oRes) ? oRes
@@ -1227,6 +1228,7 @@ sap.ui.define([
                     oDialog.setModel(new JSONModel({ ITEMS: aItems }));
                 }.bind(this),
                 function () {
+                    if (oDialog.bIsDestroyed) { return; }
                     oDialog.setBusy(false);
                     sap.m.MessageToast.show(oBundle.getText("errorObtenerDatosOriginales"));
                 }.bind(this)
@@ -1257,6 +1259,13 @@ sap.ui.define([
         //Funcion que cierra el fragmento de inventario almacen 
         onCloseDialogBatchChars: function (oEvent) {
             this.byId("batchListDialog").destroy();
+        },
+        // Limpia el estado busy al cerrar el popover (por cualquier causa: X, clic fuera, boton)
+        onAfterClosePopoverInventario: function () {
+            var oPopover = this.byId("batchListDialog");
+            if (oPopover && !oPopover.bIsDestroyed) {
+                oPopover.setBusy(false);
+            }
         },
         getHeaderMaterial: function (sParams, oSapApi) {
             return new Promise((resolve, reject) => {
