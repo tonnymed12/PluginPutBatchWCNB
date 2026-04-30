@@ -236,6 +236,7 @@ sap.ui.define([
                     this.ajaxPostRequest(urlLote, inParams,
                         function (oRes) {
                             slot.loteQty = this._formatLoteQty(oRes.outCantidadLote);
+                            slot.loteUom = oRes.outOUMLote || "";
                             resolve({ slot: slot, ok: true });
                         }.bind(this),
                         function () {
@@ -297,12 +298,7 @@ sap.ui.define([
             this.iSecuenciaCounter = 0;
 
             //se prepara los datos para hacer el update 
-            const slotTipo = oView.byId("slotType") ? oView.byId("slotType").getValue() : "";
-            const slotQty = oView.byId("slotQty") ? oView.byId("slotQty").getValue() : "";
-
             const aEdited = [
-                { attribute: "SLOTTIPO", value: slotTipo },
-                { attribute: "SLOTQTY", value: slotQty },
                 ...aItems.map(slot => ({ attribute: slot.attribute, value: slot.value }))
             ]
 
@@ -471,14 +467,15 @@ sap.ui.define([
 
                             if (bEsValido) {
                                 const sCantidadLote = this._formatLoteQty(oResponseData.outCantidadLote);
+                                const sUomLote =  oResponseData.outOUMLote;
                                 // Detectar de dónde vino el escaneo
                                 if (!this._slotContext) {
                                     // Viene del input superior → buscar slot vacío
-                                    this._ejecutarUpdate(sCantidadLote);
+                                    this._ejecutarUpdate(sCantidadLote, sUomLote);
                                 } else {
                                     // Viene del botón por fila → actualizar ese slot
                                     this._slotContext.loteQty = sCantidadLote;
-                                    this._procesarSlotValidado(sCantidadLote);
+                                    this._procesarSlotValidado(sCantidadLote, sUomLote);
                                 }
                             } else {
                                 sap.m.MessageToast.show(oBundle.getText("loteNoValido"));
@@ -624,7 +621,7 @@ sap.ui.define([
          * FLUJO: _refreshSlotsFromBackend() → validar duplicados → asignar slot vacío → merge → POST
          * @param {string} sCantidadLote - Cantidad del lote formateada (ej: "150.00")
          */
-        _ejecutarUpdate: function (sCantidadLote) {
+        _ejecutarUpdate: function (sCantidadLote, sUomLote) {
             const oView = this.getView();
             const oInput = oView.byId("scanInput");
             const sBarcode = oInput.getValue().trim();
@@ -672,6 +669,7 @@ sap.ui.define([
                     this.iSecuenciaCounter++;
                     oEmptySlot.value = sBarcode + "!" + this.iSecuenciaCounter;
                     oEmptySlot.loteQty = sCantidadLote || "";
+                    oEmptySlot.loteUom = sUomLote || "";
                     oModel.refresh(true);
                     this._updateOrderSummaryScannedQty(aItems);
                 } else {
@@ -684,13 +682,8 @@ sap.ui.define([
                 oInput.setValue("");
                 oInput.focus();
 
-                const slotTipo = oView.byId("slotType") ? oView.byId("slotType").getValue() : "";
-                const slotQty = oView.byId("slotQty") ? oView.byId("slotQty").getValue() : "";
-
                 // Construir editados sobre datos frescos
                 const aEdited = [
-                    { attribute: "SLOTTIPO", value: slotTipo },
-                    { attribute: "SLOTQTY", value: slotQty },
                     ...aItems.map(function (slot) { return { attribute: slot.attribute, value: slot.value }; })
                 ];
 
@@ -820,13 +813,7 @@ sap.ui.define([
 
                 sap.m.MessageToast.show(oBundle.getText("loteEliminado"));
 
-                var slotTipo = oView.byId("slotType") ? oView.byId("slotType").getValue() : "";
-                var slotQty = oView.byId("slotQty") ? oView.byId("slotQty").getValue() : "";
-
-                var aEdited = [
-                    { attribute: "SLOTTIPO", value: slotTipo },
-                    { attribute: "SLOTQTY", value: slotQty }
-                ].concat(aSlots.map(function (slot) { return { attribute: slot.attribute, value: slot.value }; }));
+                var aEdited = aSlots.map(function (slot) { return { attribute: slot.attribute, value: slot.value }; });
 
                 // Merge con customValues frescos (ya obtenidos en el refresh)
                 var aOriginal = oRefresh.customValues;
@@ -907,7 +894,7 @@ sap.ui.define([
          *        → asignar valor+secuencia → merge con customValues frescos → POST
          * @param {string} sCantidadLote - Cantidad del lote formateada (ej: "150.00")
          */
-        _procesarSlotValidado: function (sCantidadLote) {
+        _procesarSlotValidado: function (sCantidadLote, sUomLote) {
             if (!this._slotContext) {
                 const oBundle = this.getView().getModel("i18n").getResourceBundle();
                 console.error(oBundle.getText("noContextoSlot"));
@@ -980,17 +967,13 @@ sap.ui.define([
                 this.iSecuenciaCounter++;
                 aSlots[iIndex].value = sBarcode + "!" + this.iSecuenciaCounter;
                 aSlots[iIndex].loteQty = sCantidadLote || "";
+                aSlots[iIndex].loteUom = sUomLote || "";
                 oModel.setProperty("/ITEMS", aSlots);
                 oModel.refresh(true);
                 this._updateOrderSummaryScannedQty(aSlots);
 
                 const oView = this.getView();
-                const slotTipo = oView.byId("slotType") ? oView.byId("slotType").getValue() : "";
-                const slotQty = oView.byId("slotQty") ? oView.byId("slotQty").getValue() : "";
-
                 const aEdited = [
-                    { attribute: "SLOTTIPO", value: slotTipo },
-                    { attribute: "SLOTQTY", value: slotQty },
                     ...aSlots.map(function (slot) { return { attribute: slot.attribute, value: slot.value }; })
                 ];
 

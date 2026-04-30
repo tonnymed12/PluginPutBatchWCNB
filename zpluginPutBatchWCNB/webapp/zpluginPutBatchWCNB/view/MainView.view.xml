@@ -93,10 +93,10 @@ height="100%">
                         <Text text="{i18n>loteCode}"  />
                     </Column>
                     <Column width="15%" hAlign="Left" vAlign="Middle" >
-                        <Text text="{i18n>secuenciaCode}" />
+                        <Text text="{i18n>loteQty}" />
                     </Column>
                     <Column width="15%" hAlign="Left" vAlign="Middle" >
-                        <Text text="{i18n>loteQty}" />
+                        <Text text="{i18n>secuenciaCode}" />
                     </Column>
                     <Column width="60%" hAlign="Left" vAlign="Middle">
                         <Text text="{i18n>Value}" visible="false" />
@@ -114,8 +114,8 @@ height="100%">
                             <Text text="{attribute}" />
                             <Input value="{path: 'value', formatter: '.formatter.getMaterial'}" enabled="false" />
                             <Input value="{path: 'value', formatter: '.formatter.getLote'}" enabled="false" />
+                            <ObjectAttribute text="{loteQty} {loteUom}" />
                             <Input value="{path: 'value', formatter: '.formatter.getSecuencia'}" enabled="false" />
-                            <Input value="{loteQty}" enabled="false" />
                             <Input value="{value}" enabled="false" visible="false"/>
                             <ndc:BarcodeScannerButton  
                                 scanSuccess=".onScanSlotSuccess"
