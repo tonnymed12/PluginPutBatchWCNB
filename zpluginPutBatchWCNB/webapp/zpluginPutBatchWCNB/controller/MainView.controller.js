@@ -366,18 +366,9 @@ sap.ui.define([
             const bEsPuestoCritico = ["TA01", "TA02", "SL02"].includes(puesto);
 
             // Validación de estatus de operación (en tiempo real desde POD)
-            var oPodSelectionModel = this.getPodSelectionModel();
-            var sCurrentStatus = "";
-            if (oPodSelectionModel && oPodSelectionModel.selectedPhaseData) {
-                sCurrentStatus = oPodSelectionModel.selectedPhaseData.status || "";
-            }
-            // Fallback a gOperationPhase si no hay POD data
-            if (!sCurrentStatus && gOperationPhase) {
-                sCurrentStatus = gOperationPhase.status || "";
-            }
-
+            const sCurrentStatus = this._getCurrentOperationStatus();
             if (sCurrentStatus !== OPERATION_STATUS.ACTIVE) {
-                sap.m.MessageBox.error(oBundle.getText("verificarStatusOperacion"));
+                sap.m.MessageBox.error(oBundle.getText("verificarStatusOperacion"))
                 return;
             }
 
@@ -467,7 +458,7 @@ sap.ui.define([
 
                             if (bEsValido) {
                                 const sCantidadLote = this._formatLoteQty(oResponseData.outCantidadLote);
-                                const sUomLote =  oResponseData.outOUMLote;
+                                const sUomLote = oResponseData.outOUMLote;
                                 // Detectar de dónde vino el escaneo
                                 if (!this._slotContext) {
                                     // Viene del input superior → buscar slot vacío
@@ -1118,6 +1109,33 @@ sap.ui.define([
                     sap.m.MessageToast.show(oBundle.getText("errorObtenerBom", [order]));
                 }.bind(this));
         },
+        _getCurrentOperationStatus: function () {
+            var oPodSelectionModel = this.getPodSelectionModel();
+            var sCurrentStatus = "";
+
+
+            if (oPodSelectionModel && oPodSelectionModel.selectedPhaseData) {
+                sCurrentStatus = oPodSelectionModel.selectedPhaseData.status || "";
+            }
+
+            if (!sCurrentStatus) {
+                var operation = (oPodSelectionModel && typeof oPodSelectionModel.getOperation === "function")
+                    ? (oPodSelectionModel.getOperation() && oPodSelectionModel.getOperation().operation)
+                    : null;
+                if (!operation && gOperationPhase && gOperationPhase.operation) {
+                    operation = gOperationPhase.operation.operation || gOperationPhase.operation;
+                }
+                if (operation) {
+                    sCurrentStatus = operation.status || operation.operationStatus || "";
+                }
+            }
+
+            if (!sCurrentStatus && gOperationPhase) {
+                sCurrentStatus = gOperationPhase.status || "";
+            }
+
+            return sCurrentStatus;
+        },
         _updateOrderSummaryScannedQty: function (aItems) {
             const oOrderSummaryModel = this.getView().getModel("orderSummary");
             if (!oOrderSummaryModel) {
@@ -1193,8 +1211,8 @@ sap.ui.define([
                     // El PP devuelve el array dentro de "stockResponse"
                     var aData = Array.isArray(oRes) ? oRes
                         : (Array.isArray(oRes && oRes.stockResponse) ? oRes.stockResponse
-                        : (Array.isArray(oRes && oRes.outLotes) ? oRes.outLotes
-                        : (Array.isArray(oRes && oRes.content) ? oRes.content : [])));
+                            : (Array.isArray(oRes && oRes.outLotes) ? oRes.outLotes
+                                : (Array.isArray(oRes && oRes.content) ? oRes.content : [])));
 
                     var aItems = aData.map(function (oItem) {
                         var sMat = oItem.material;
