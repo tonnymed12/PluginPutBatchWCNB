@@ -22,6 +22,7 @@ sap.ui.define([
         onInit: function () {
             PluginViewController.prototype.onInit.apply(this, arguments);
             this.oScanInput = this.byId("scanInput");
+            this._oScanDebounceTimer = null;
             this.iSecuenciaCounter = 0;  // Contador de secuencia para cada escaneo
             this.sAcActivity = "";       // Guardar valor AC_ACTIVITY del puesto
 
@@ -31,6 +32,7 @@ sap.ui.define([
                 material: "",
                 descripcion: "",
                 cantidadNecesaria: 0,
+                unidadMedida: "",
                 cantidadEscaneada: 0
             });
             this.getView().setModel(oOrderSummaryModel, "orderSummary");
@@ -347,6 +349,39 @@ sap.ui.define([
 
         },
         /**
+         * Obtiene el status de la operación actual desde 3 fuentes en cascada.
+         * @returns {string} Status de la operación o cadena vacía si no se encuentra
+         */
+        _getCurrentOperationStatus: function () {
+            var oPodSelectionModel = this.getPodSelectionModel();
+            var sCurrentStatus = "";
+
+            // Fuente 1: selectedPhaseData
+            if (oPodSelectionModel && oPodSelectionModel.selectedPhaseData) {
+                sCurrentStatus = oPodSelectionModel.selectedPhaseData.status || "";
+            }
+
+            // Fuente 2: getOperation().operation
+            if (!sCurrentStatus) {
+                var operation = (oPodSelectionModel && typeof oPodSelectionModel.getOperation === "function")
+                    ? (oPodSelectionModel.getOperation() && oPodSelectionModel.getOperation().operation)
+                    : null;
+                if (!operation && gOperationPhase && gOperationPhase.operation) {
+                    operation = gOperationPhase.operation.operation || gOperationPhase.operation;
+                }
+                if (operation) {
+                    sCurrentStatus = operation.status || operation.operationStatus || "";
+                }
+            }
+
+            // Fuente 3: gOperationPhase directo
+            if (!sCurrentStatus && gOperationPhase) {
+                sCurrentStatus = gOperationPhase.status || "";
+            }
+
+            return sCurrentStatus;
+        },
+        /**
         * Llamada al Pp(getReservas) para obtener los lotes en Reserva y hacer validacion de material
         * @param {string} sLote - Valor del lote "material!lote" 
         * @param {string} sMaterial - Valor del material "material!lote" 
@@ -366,9 +401,9 @@ sap.ui.define([
             const bEsPuestoCritico = ["TA01", "TA02", "SL02"].includes(puesto);
 
             // Validación de estatus de operación (en tiempo real desde POD)
-            const sCurrentStatus = this._getCurrentOperationStatus();
+            var sCurrentStatus = this._getCurrentOperationStatus();
             if (sCurrentStatus !== OPERATION_STATUS.ACTIVE) {
-                sap.m.MessageBox.error(oBundle.getText("verificarStatusOperacion"))
+                sap.m.MessageBox.error(oBundle.getText("verificarStatusOperacion"));
                 return;
             }
 
@@ -458,7 +493,7 @@ sap.ui.define([
 
                             if (bEsValido) {
                                 const sCantidadLote = this._formatLoteQty(oResponseData.outCantidadLote);
-                                const sUomLote = oResponseData.outOUMLote;
+                                const sUomLote =  oResponseData.outOUMLote;
                                 // Detectar de dónde vino el escaneo
                                 if (!this._slotContext) {
                                     // Viene del input superior → buscar slot vacío
@@ -728,7 +763,13 @@ sap.ui.define([
             sap.m.MessageToast.show(oBundle.getText("scanFailed", [oEvent]), { duration: 1000 });
         },
         onScanLiveupdate: function (oEvent) {
-            // User can implement the validation about inputting value
+            if (this._oScanDebounceTimer) {
+                clearTimeout(this._oScanDebounceTimer);
+            }
+            this._oScanDebounceTimer = setTimeout(function () {
+                this._oScanDebounceTimer = null;
+                this.onBarcodeSubmit();
+            }.bind(this), 500);
         },
         /**
          * Elimina un lote de la tabla y recorre los posteriores hacia arriba.
@@ -1084,11 +1125,13 @@ sap.ui.define([
                     const oOrderSummaryModel = this.getView().getModel("orderSummary");
                     const sBatch = oNormalComponent.batchNumber || "";
                     const sMaterial = (oNormalComponent.material && oNormalComponent.material.material) || "";
+                    const sUom = oNormalComponent.unitOfMeasure  || "";
                     const nCantidadNecesaria = Number(oNormalComponent.totalQuantity || 0);
 
                     // oOrderSummaryModel.setProperty("/lote", sBatch);
                     oOrderSummaryModel.setProperty("/material", sMaterial);
                     oOrderSummaryModel.setProperty("/cantidadNecesaria", nCantidadNecesaria);
+                    oOrderSummaryModel.setProperty("/unidadMedida", sUom);
 
                     this.getHeaderMaterial({ material: sMaterial, plant: oPODParams.PLANT_ID }, oSapApi)
                         .then(function (headerData) {
@@ -1108,33 +1151,6 @@ sap.ui.define([
                     console.error("[OrderSummary Test] Error:", error);
                     sap.m.MessageToast.show(oBundle.getText("errorObtenerBom", [order]));
                 }.bind(this));
-        },
-        _getCurrentOperationStatus: function () {
-            var oPodSelectionModel = this.getPodSelectionModel();
-            var sCurrentStatus = "";
-
-
-            if (oPodSelectionModel && oPodSelectionModel.selectedPhaseData) {
-                sCurrentStatus = oPodSelectionModel.selectedPhaseData.status || "";
-            }
-
-            if (!sCurrentStatus) {
-                var operation = (oPodSelectionModel && typeof oPodSelectionModel.getOperation === "function")
-                    ? (oPodSelectionModel.getOperation() && oPodSelectionModel.getOperation().operation)
-                    : null;
-                if (!operation && gOperationPhase && gOperationPhase.operation) {
-                    operation = gOperationPhase.operation.operation || gOperationPhase.operation;
-                }
-                if (operation) {
-                    sCurrentStatus = operation.status || operation.operationStatus || "";
-                }
-            }
-
-            if (!sCurrentStatus && gOperationPhase) {
-                sCurrentStatus = gOperationPhase.status || "";
-            }
-
-            return sCurrentStatus;
         },
         _updateOrderSummaryScannedQty: function (aItems) {
             const oOrderSummaryModel = this.getView().getModel("orderSummary");
@@ -1211,8 +1227,8 @@ sap.ui.define([
                     // El PP devuelve el array dentro de "stockResponse"
                     var aData = Array.isArray(oRes) ? oRes
                         : (Array.isArray(oRes && oRes.stockResponse) ? oRes.stockResponse
-                            : (Array.isArray(oRes && oRes.outLotes) ? oRes.outLotes
-                                : (Array.isArray(oRes && oRes.content) ? oRes.content : [])));
+                        : (Array.isArray(oRes && oRes.outLotes) ? oRes.outLotes
+                        : (Array.isArray(oRes && oRes.content) ? oRes.content : [])));
 
                     var aItems = aData.map(function (oItem) {
                         var sMat = oItem.material;
