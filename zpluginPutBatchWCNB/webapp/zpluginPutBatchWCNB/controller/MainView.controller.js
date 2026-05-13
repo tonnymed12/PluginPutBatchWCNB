@@ -25,6 +25,7 @@ sap.ui.define([
             this._oScanDebounceTimer = null;
             this.iSecuenciaCounter = 0;  // Contador de secuencia para cada escaneo
             this.sAcActivity = "";       // Guardar valor AC_ACTIVITY del puesto
+            this._aBomNormalComponents = [];  // Componentes NORMAL de la BOM para el popover de lotes
 
             // Modelo "orderSummary" 
             const oOrderSummaryModel = new JSONModel({
@@ -120,6 +121,48 @@ sap.ui.define([
                     });
                 }
 
+                // Compactar si quedaron huecos tras una EM (slots vacíos antes de slots llenos)
+                var aConValorCarga = aSlotsFixed.filter(function (s) { return s.value && s.value.trim() !== ""; });
+                var bHayHueco = false;
+                for (var jj = 0; jj < aSlotsFixed.length; jj++) {
+                    if (!aSlotsFixed[jj].value || aSlotsFixed[jj].value.trim() === "") {
+                        if (aSlotsFixed.slice(jj + 1).some(function (s) { return s.value && s.value.trim() !== ""; })) {
+                            bHayHueco = true;
+                            break;
+                        }
+                    }
+                }
+                if (bHayHueco && aConValorCarga.length > 0) {
+                    for (var kk = 0; kk < aSlotsFixed.length; kk++) {
+                        if (kk < aConValorCarga.length) {
+                            aSlotsFixed[kk].value = aConValorCarga[kk].value;
+                        } else {
+                            aSlotsFixed[kk].value = "";
+                        }
+                    }
+                    // Renumerar secuencias tras compactación
+                    var iSeqCarga = 0;
+                    aSlotsFixed.forEach(function (slot) {
+                        var sVal = (slot.value || "").trim();
+                        if (!sVal) { return; }
+                        var aPartes = sVal.split('!');
+                        if (aPartes.length >= 2) {
+                            iSeqCarga++;
+                            var sCant = aPartes.length >= 4 ? aPartes[2] : "";
+                            slot.value = aPartes[0] + "!" + aPartes[1] + (sCant ? "!" + sCant : "") + "!" + iSeqCarga;
+                        }
+                    });
+                    // Persistir compactación en backend
+                    this.setCustomValuesPp({
+                        inCustomValues: aCustomValues.map(function (item) {
+                            var slotActualizado = aSlotsFixed.find(function (s) { return s.attribute === item.attribute; });
+                            return slotActualizado ? { attribute: item.attribute, value: slotActualizado.value } : item;
+                        }),
+                        inPlant: oPODParams.PLANT_ID,
+                        inWorkCenter: oPODParams.WORK_CENTER
+                    }, oSapApi);
+                }
+
                 // Setear los datos en la tabla
                 oTable.setModel(new sap.ui.model.json.JSONModel({ ITEMS: aSlotsFixed }));
                 this._updateOrderSummaryScannedQty(aSlotsFixed);
@@ -144,7 +187,7 @@ sap.ui.define([
                         .filter(slot => slot.value)
                         .map(slot => {
                             const parts = (slot.value || "").split('!');
-                            return parseInt(parts[2] || 0);
+                            return parseInt(parts[parts.length - 1] || 0);
                         })
                     );
                     this.iSecuenciaCounter = maxSecuencia;
@@ -493,7 +536,7 @@ sap.ui.define([
 
                             if (bEsValido) {
                                 const sCantidadLote = this._formatLoteQty(oResponseData.outCantidadLote);
-                                const sUomLote =  oResponseData.outOUMLote;
+                                const sUomLote = oResponseData.outOUMLote;
                                 // Detectar de dónde vino el escaneo
                                 if (!this._slotContext) {
                                     // Viene del input superior → buscar slot vacío
@@ -568,12 +611,12 @@ sap.ui.define([
             // Preservar loteQty del modelo actual antes de sobreescribir
             var oCurrentModel = oTable.getModel();
             var aCurrentItems = (oCurrentModel && oCurrentModel.getProperty("/ITEMS")) || [];
-            var oLoteQtyMap = {};
+            var oLoteDataMap = {};
             aCurrentItems.forEach(function (item) {
-                if (item.value && item.loteQty) {
+                if (item.value) {
                     var parts = item.value.split('!');
                     var key = parts.slice(0, 2).join('!').toUpperCase();
-                    oLoteQtyMap[key] = item.loteQty;
+                    oLoteDataMap[key] = { loteQty: item.loteQty || "", loteUom: item.loteUom || "" };
                 }
             });
 
@@ -607,16 +650,56 @@ sap.ui.define([
                     });
                 }
 
-                // Restaurar loteQty desde el modelo anterior (matching por material!lote)
+                // Restaurar loteQty y loteUom desde el modelo anterior (matching por material!lote)
                 aSlotsFixed.forEach(function (slot) {
                     if (slot.value) {
                         var parts = slot.value.split('!');
                         var key = parts.slice(0, 2).join('!').toUpperCase();
-                        slot.loteQty = oLoteQtyMap[key] || "";
+                        var oLoteData = oLoteDataMap[key] || {};
+                        slot.loteQty = oLoteData.loteQty || "";
+                        slot.loteUom = oLoteData.loteUom || "";
                     } else {
                         slot.loteQty = "";
+                        slot.loteUom = "";
                     }
                 });
+
+                // Compactar si quedaron huecos tras una EM (slots vacíos antes de slots llenos)
+                var aConValorRefr = aSlotsFixed.filter(function (s) { return s.value && s.value.trim() !== ""; });
+                var bHayHuecoRefr = false;
+                for (var jr = 0; jr < aSlotsFixed.length; jr++) {
+                    if (!aSlotsFixed[jr].value || aSlotsFixed[jr].value.trim() === "") {
+                        if (aSlotsFixed.slice(jr + 1).some(function (s) { return s.value && s.value.trim() !== ""; })) {
+                            bHayHuecoRefr = true;
+                            break;
+                        }
+                    }
+                }
+                if (bHayHuecoRefr && aConValorRefr.length > 0) {
+                    for (var kr = 0; kr < aSlotsFixed.length; kr++) {
+                        if (kr < aConValorRefr.length) {
+                            aSlotsFixed[kr].value = aConValorRefr[kr].value;
+                            aSlotsFixed[kr].loteQty = aConValorRefr[kr].loteQty;
+                            aSlotsFixed[kr].loteUom = aConValorRefr[kr].loteUom;
+                        } else {
+                            aSlotsFixed[kr].value = "";
+                            aSlotsFixed[kr].loteQty = "";
+                            aSlotsFixed[kr].loteUom = "";
+                        }
+                    }
+                    // Renumerar secuencias
+                    var iSeqRefr = 0;
+                    aSlotsFixed.forEach(function (slot) {
+                        var sVal = (slot.value || "").trim();
+                        if (!sVal) { return; }
+                        var aPartes = sVal.split('!');
+                        if (aPartes.length >= 2) {
+                            iSeqRefr++;
+                            var sCant = aPartes.length >= 4 ? aPartes[2] : "";
+                            slot.value = aPartes[0] + "!" + aPartes[1] + (sCant ? "!" + sCant : "") + "!" + iSeqRefr;
+                        }
+                    });
+                }
 
                 // Actualizar tabla con datos frescos
                 oTable.setModel(new sap.ui.model.json.JSONModel({ ITEMS: aSlotsFixed }));
@@ -633,7 +716,7 @@ sap.ui.define([
                         .filter(function (s) { return s.value; })
                         .map(function (s) {
                             var parts = (s.value || "").split('!');
-                            return parseInt(parts[2] || 0);
+                            return parseInt(parts[parts.length - 1] || 0);
                         })
                     );
                     this.iSecuenciaCounter = maxSecuencia;
@@ -822,19 +905,22 @@ sap.ui.define([
                 for (var i = iIndex; i < aSlots.length - 1; i++) {
                     aSlots[i].value = aSlots[i + 1].value;
                     aSlots[i].loteQty = aSlots[i + 1].loteQty;
+                    aSlots[i].loteUom = aSlots[i + 1].loteUom;
                 }
                 aSlots[aSlots.length - 1].value = "";
                 aSlots[aSlots.length - 1].loteQty = "";
+                aSlots[aSlots.length - 1].loteUom = "";
 
-                // Renumerar secuencia
+                // Renumerar secuencia (preservar CANTIDAD si existe: MAT!LOTE!CANTIDAD!SEQ)
                 var iNuevaSecuencia = 0;
                 aSlots.forEach(function (slot) {
                     var sValorActual = ((slot && slot.value) || "").toString().trim();
-                    if (!sValorActual) return;
+                    if (!sValorActual) { return; }
                     var aPartes = sValorActual.split('!');
                     if (aPartes.length >= 2) {
                         iNuevaSecuencia++;
-                        slot.value = aPartes.slice(0, 2).join('!') + "!" + iNuevaSecuencia;
+                        var sCantidad = aPartes.length >= 4 ? aPartes[2] : (slot.cantidadAsignada || "");
+                        slot.value = aPartes[0] + "!" + aPartes[1] + (sCantidad ? "!" + sCantidad : "") + "!" + iNuevaSecuencia;
                     }
                 });
                 this.iSecuenciaCounter = iNuevaSecuencia;
@@ -1043,6 +1129,50 @@ sap.ui.define([
                 }.bind(this));
             }.bind(this));
         },
+        //>>>>>>>
+        summarizeByErpSequence: function (input) {
+            var result = [];
+            var groups = {};
+            var comps = input;
+            var i = 0;
+
+            while (i < comps.length) {
+                var c = comps[i];
+                var key = c.erpSequence;
+
+                // Crear grupo si no existe
+                if (!groups[key]) {
+                    groups[key] = {
+                        erpSequence: key,
+                        material: c.material, // objeto completo
+                        assemblyOperationActivity: c.assemblyOperationActivity, // objeto completo
+                        componentType: c.componentType,
+                        unitOfMeasure: c.unitOfMeasure,
+                        reservationOrderNumber: c.reservationOrderNumber,
+                        sequence: c.sequence,   // inicializar con la primera sequence encontrada
+                        quantity: 0,
+                        totalQuantity: 0,
+                        batchNumber: "",
+                        reservationItemNumber: ""
+                    };
+                }
+                // Actualizar mínima sequence
+                if (c.sequence < groups[key].sequence) {
+                    groups[key].sequence = c.sequence;
+                }
+                // Acumular cantidades
+                groups[key].quantity = groups[key].quantity + c.quantity;
+                groups[key].totalQuantity = groups[key].totalQuantity + c.totalQuantity;
+
+                i = i + 1;
+            }
+            // Convertir grupos a arreglo
+            for (var g in groups) {
+                result[result.length] = groups[g];
+            }
+            return result;
+        },
+        //>>>>>>>
         onBeforeRenderingPlugin: function () {
             // Inicializar gOperationPhase desde POD para capturar estado inicial
             var oPodSelectionModel = this.getPodSelectionModel();
@@ -1113,20 +1243,31 @@ sap.ui.define([
                 .then(function (data) {
                     const oBomData = Array.isArray(data) ? data[0] : data;
                     const aComponents = (oBomData && Array.isArray(oBomData.components)) ? oBomData.components : [];
-                    const oNormalComponent = aComponents.find(function (oComp) {
+
+                    // Filtrar todos los componentes NORMAL y agrupar por erpSequence
+                    const aNormalComponents = aComponents.filter(function (oComp) {
                         return oComp && oComp.componentType === "NORMAL";
                     });
 
-                    if (!oNormalComponent) {
+                    // Guardar para el popover de consulta de lotes asignados en la BOM
+                    this._aBomNormalComponents = aNormalComponents;
+
+                    if (!aNormalComponents.length) {
                         console.warn("[OrderSummary] No se encontró componente NORMAL en BOMS", oBomData);
                         return;
                     }
 
+                    // Agrupar por erpSequence y sumar totalQuantity de todos los lotes
+                    const aGrouped = this.summarizeByErpSequence(aNormalComponents);
+                    const oPrimerGrupo = aGrouped[0] || {};
+
                     const oOrderSummaryModel = this.getView().getModel("orderSummary");
-                    const sBatch = oNormalComponent.batchNumber || "";
-                    const sMaterial = (oNormalComponent.material && oNormalComponent.material.material) || "";
-                    const sUom = oNormalComponent.unitOfMeasure  || "";
-                    const nCantidadNecesaria = Number(oNormalComponent.totalQuantity || 0);
+                    const sMaterial = (oPrimerGrupo.material && oPrimerGrupo.material.material) || "";
+                    const sUom = oPrimerGrupo.unitOfMeasure || "";
+                    // cantidadNecesaria = suma de totalQuantity de todos los grupos
+                    const nCantidadNecesaria = aGrouped.reduce(function (nSum, oGrupo) {
+                        return nSum + Number(oGrupo.totalQuantity || 0);
+                    }, 0);
 
                     // oOrderSummaryModel.setProperty("/lote", sBatch);
                     oOrderSummaryModel.setProperty("/material", sMaterial);
@@ -1174,18 +1315,30 @@ sap.ui.define([
         },
         onPressOpenFragmentList: function (oEvent) {
             var oView = this.getView();
-            var oThis = this;
             var oSource = oEvent.getSource();
-            var oPODParams = this.Commons.getPODParams(this.getOwnerComponent());
-            var oOrderSummaryModel = oView.getModel("orderSummary");
-            var sMaterial = oOrderSummaryModel ? oOrderSummaryModel.getProperty("/material") : "";
-            var nCantidadRequerida = oOrderSummaryModel ? oOrderSummaryModel.getProperty("/cantidadNecesaria") : 0;
+            var oBundle = oView.getModel("i18n").getResourceBundle();
 
-            if (!sMaterial) {
-                var oBundle = oView.getModel("i18n").getResourceBundle();
-                sap.m.MessageToast.show(oBundle.getText("errorObtenerHeaderMaterial", [""]));
+            if (!this._aBomNormalComponents || !this._aBomNormalComponents.length) {
+                sap.m.MessageToast.show(oBundle.getText("errorObtenerBom", [""]));
                 return;
             }
+
+            // Construir ítems directamente desde los componentes NORMAL de la BOM (sin llamada extra al backend)
+            var aItems = this._aBomNormalComponents.map(function (oComp) {
+                var sMat = (oComp.material && oComp.material.material) || "";
+                var sLote = oComp.batchNumber || "";
+                var nCantidad = parseFloat(oComp.totalQuantity || 0);
+                return {
+                    MATERIAL: sMat,
+                    LOTE: sLote,
+                    CANTIDAD: nCantidad.toFixed(2),
+                    CODIGO: sMat + "!" + sLote
+                };
+            });
+
+            var fnPopulate = function (oDialog) {
+                oDialog.setModel(new JSONModel({ ITEMS: aItems }));
+            };
 
             if (!this.byId("batchListDialog")) {
                 Fragment.load({
@@ -1194,62 +1347,14 @@ sap.ui.define([
                     controller: this
                 }).then(function (oPopover) {
                     oView.addDependent(oPopover);
+                    fnPopulate(oPopover);
                     oPopover.openBy(oSource);
-                    oThis.enlistarInventario(oPODParams.PLANT_ID, oPODParams.ORDER_ID, sMaterial, nCantidadRequerida);
                 });
             } else {
-                this.byId("batchListDialog").openBy(oSource);
-                this.enlistarInventario(oPODParams.PLANT_ID, oPODParams.ORDER_ID, sMaterial, nCantidadRequerida);
+                var oDialog = this.byId("batchListDialog");
+                fnPopulate(oDialog);
+                oDialog.openBy(oSource);
             }
-        },
-
-        // Consulta lotes disponibles para el material de la orden vía PP getLotesMaterialStock
-        enlistarInventario: function (sPlant, sOrden, sMaterial, nCantidadRequerida) {
-            var oView = this.getView();
-            var oSapApi = this.getPublicApiRestDataSourceUri();
-            var oBundle = oView.getModel("i18n").getResourceBundle();
-            var oDialog = this.byId("batchListDialog");
-
-            if (!oDialog) { return; }
-
-            oDialog.setBusy(true);
-
-            var oParams = {
-                inPlanta: sPlant,
-                inOrden: sOrden,
-                inMaterial: sMaterial
-            };
-
-            this.ajaxPostRequest(oSapApi + this.ApiPaths.getLotesMaterialStock, oParams,
-                function (oRes) {
-                    if (oDialog.bIsDestroyed) { return; }
-                    oDialog.setBusy(false);
-                    // El PP devuelve el array dentro de "stockResponse"
-                    var aData = Array.isArray(oRes) ? oRes
-                        : (Array.isArray(oRes && oRes.stockResponse) ? oRes.stockResponse
-                        : (Array.isArray(oRes && oRes.outLotes) ? oRes.outLotes
-                        : (Array.isArray(oRes && oRes.content) ? oRes.content : [])));
-
-                    var aItems = aData.map(function (oItem) {
-                        var sMat = oItem.material;
-                        var sLote = oItem.batchNumber;
-                        var nCantidad = parseFloat((oItem.quantityOnHand && oItem.quantityOnHand.value) || 0);
-                        return {
-                            MATERIAL: sMat,
-                            LOTE: sLote,
-                            CANTIDAD: nCantidad.toFixed(2),
-                            CODIGO: sMat + "!" + sLote
-                        };
-                    });
-
-                    oDialog.setModel(new JSONModel({ ITEMS: aItems }));
-                }.bind(this),
-                function () {
-                    if (oDialog.bIsDestroyed) { return; }
-                    oDialog.setBusy(false);
-                    sap.m.MessageToast.show(oBundle.getText("errorObtenerDatosOriginales"));
-                }.bind(this)
-            );
         },
         onConfirmSendBatchChars: function () {
             var oPopover = this.byId("batchListDialog");
