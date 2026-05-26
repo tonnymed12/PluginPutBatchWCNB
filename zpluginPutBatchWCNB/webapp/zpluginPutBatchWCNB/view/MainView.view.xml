@@ -58,9 +58,6 @@ height="100%">
                     <Input id="orderCantidadEscaneada" value="{orderSummary>/cantidadEscaneada}" enabled="false" width="100%"/>
                 </VBox>
 
-                <VBox width="15%">
-
-                </VBox>
             </HBox>
             
             <HBox width="97%" justifyContent="Center" class="sapUiSmallMarginTop sapUiSmallMarginBeginEnd">

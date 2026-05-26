@@ -217,10 +217,6 @@ sap.ui.define([
 
             //comparacion del lote ingresado 
             const sNormalizado = sBarcode.toUpperCase();
-            //busca si es igual a uno de los items 
-            const oExiste = aItems.find(Item => {
-                return (Item.value || "").toString().trim().toUpperCase() === sNormalizado;
-            });
 
             const partsBarcode = sNormalizado.split('!');
 
@@ -231,6 +227,21 @@ sap.ui.define([
             }
             const loteExtraido = partsBarcode[1].trim();
             const materialExtraido = partsBarcode[0].trim();
+
+            // Early duplicate check: comparar material!lote contra las 2 primeras partes del valor guardado
+            const sMaterialLoteEscaneado = materialExtraido + "!" + loteExtraido;
+            const oExiste = aItems.find(function (Item) {
+                var valorItem = (Item.value || "").toString().trim().toUpperCase();
+                if (!valorItem) { return false; }
+                var partsItem = valorItem.split('!');
+                return partsItem.slice(0, 2).join('!') === sMaterialLoteEscaneado;
+            });
+
+            if (oExiste) {
+                sap.m.MessageToast.show(oBundle.getText("barcodeExists", [sBarcode, oExiste.attribute]));
+                oInput.setValue(""); oInput.focus();
+                return;
+            }
 
             this._validarMaterialYLote(loteExtraido, materialExtraido);
 
@@ -540,7 +551,9 @@ sap.ui.define([
                                 // Detectar de dónde vino el escaneo
                                 if (!this._slotContext) {
                                     // Viene del input superior → buscar slot vacío
-                                    this._ejecutarUpdate(sCantidadLote, sUomLote);
+                                    // Pasar el barcode capturado ANTES de la validación async para
+                                    // evitar race condition si el input fue limpiado durante la espera.
+                                    this._ejecutarUpdate(sCantidadLote, sUomLote, materialEscaneado + "!" + loteEscaneado);
                                 } else {
                                     // Viene del botón por fila → actualizar ese slot
                                     this._slotContext.loteQty = sCantidadLote;
@@ -730,10 +743,12 @@ sap.ui.define([
          * FLUJO: _refreshSlotsFromBackend() → validar duplicados → asignar slot vacío → merge → POST
          * @param {string} sCantidadLote - Cantidad del lote formateada (ej: "150.00")
          */
-        _ejecutarUpdate: function (sCantidadLote, sUomLote) {
+        _ejecutarUpdate: function (sCantidadLote, sUomLote, sBarcodeIn) {
             const oView = this.getView();
             const oInput = oView.byId("scanInput");
-            const sBarcode = oInput.getValue().trim();
+            // Usar el barcode capturado antes de la validación async (evita race condition
+            // si el input fue limpiado mientras se esperaba la respuesta del servidor).
+            const sBarcode = (sBarcodeIn || oInput.getValue()).trim();
             const oPODParams = this.Commons.getPODParams(this.getOwnerComponent());
             const oBundle = oView.getModel("i18n").getResourceBundle();
 
@@ -852,7 +867,7 @@ sap.ui.define([
             this._oScanDebounceTimer = setTimeout(function () {
                 this._oScanDebounceTimer = null;
                 this.onBarcodeSubmit();
-            }.bind(this), 500);
+            }.bind(this), 200);
         },
         /**
          * Elimina un lote de la tabla y recorre los posteriores hacia arriba.
@@ -951,11 +966,14 @@ sap.ui.define([
                     }
                 }
 
+                var partsDeleted = sValueToDelete.split('!');
+                var sMaterialLoteDeleted = partsDeleted.slice(0, 2).join('!');
                 var oSapApi = this.getPublicApiRestDataSourceUri();
                 this.setCustomValuesPp({
                     inCustomValues: aCustomValuesFinal,
                     inPlant: oPODParams.PLANT_ID,
-                    inWorkCenter: oPODParams.WORK_CENTER
+                    inWorkCenter: oPODParams.WORK_CENTER,
+                    inMaterialLote: sMaterialLoteDeleted
                 }, oSapApi).then(function () {
                     sap.m.MessageToast.show(oBundle.getText("loteActualizadoAntesEliminar"));
                 }).catch(function () {
@@ -1129,7 +1147,7 @@ sap.ui.define([
                 }.bind(this));
             }.bind(this));
         },
-        //>>>>>>>
+        //>>>>>>>   EN HONOR A GS 
         summarizeByErpSequence: function (input) {
             var result = [];
             var groups = {};
@@ -1192,6 +1210,7 @@ sap.ui.define([
             }
             gOperationPhase = oData;
             this.onGetCustomValues();
+            this.setOrderSummary();
 
         },
         isSubscribingToNotifications: function () {
@@ -1380,7 +1399,8 @@ sap.ui.define([
         },
         //Funcion que cierra el fragmento de inventario almacen 
         onCloseDialogBatchChars: function (oEvent) {
-            this.byId("batchListDialog").destroy();
+            var oDialog = this.byId("batchListDialog");
+            if (oDialog) { oDialog.close(); }
         },
         // Limpia el estado busy al cerrar el popover (por cualquier causa: X, clic fuera, boton)
         onAfterClosePopoverInventario: function () {
