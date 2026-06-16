@@ -71,7 +71,7 @@ sap.ui.define([],
         /** PRODUCTION PROCESS API CONSUMPTION TYPE : POST  */
         SET_LOTE :"/pe/api/v1/process/processDefinitions/start?key=REG_8e9c20ce-5668-487d-bbc7-f1b4e642b21c",
 
-        putBatchSlotWorkCenter: "/pe/api/v1/process/processDefinitions/start?key=REG_4ee9064a-eaa4-4080-aafc-a606c7fa4900",
+        putBatchSlotWorkCenter: "/pe/api/v1/process/processDefinitions/start?key=REG_4ee9064a-eaa4-4080-aafc-a606c7fa4900&async=false",
 
          /** PRODUCTION PROCESS API CONSUMPTION TYPE : POST  getReservas*/
         getReservas: "/pe/api/v1/process/processDefinitions/start?key=REG_2d4c6e10-7d49-4052-9b61-fa9050a41ffa&async=false",

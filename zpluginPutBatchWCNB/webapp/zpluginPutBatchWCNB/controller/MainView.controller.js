@@ -117,7 +117,7 @@ sap.ui.define([
 
                     this.setCustomValuesPp(oParamsUpdate, oSapApi).then(() => {
                         // Lotes sobrantes eliminados
-                    });
+                    }).catch(() => {});
                 }
                 // Caso 2: hay menos slots que SLOTQTY -> rellenar vacíos
                 for (let i = aSlotsFixed.length + 1; i <= iSlotQty; i++) {
@@ -173,7 +173,7 @@ sap.ui.define([
                         }),
                         inPlant: oPODParams.PLANT_ID,
                         inWorkCenter: oPODParams.WORK_CENTER
-                    }, oSapApi);
+                    }, oSapApi).catch(() => {});
                 }
 
                 // Setear los datos en la tabla
@@ -882,9 +882,12 @@ sap.ui.define([
                     inMaterialLote: sMaterialLote
                 }, oSapApi).then(function () {
                     sap.m.MessageToast.show(oBundle.getText("slotActualizado"));
-                }).catch(function () {
-                    sap.m.MessageToast.show(oBundle.getText("errorActualizar"));
-                });
+                }).catch(function (oErr) {
+                    var sErrMsg = (oErr && oErr.responseJSON && (oErr.responseJSON.message || oErr.responseJSON.displayMessage)) || oBundle.getText("errorActualizar");
+                    console.error("[putBatchSlotWC] Error al guardar slot:", oErr);
+                    sap.m.MessageToast.show(sErrMsg);
+                    this._refreshSlotsFromBackend();
+                }.bind(this));
             }.bind(this));
         },
         onScanSuccess: function (oEvent) {
@@ -1021,9 +1024,12 @@ sap.ui.define([
                     inMaterialLote: sMaterialLoteDeleted
                 }, oSapApi).then(function () {
                     sap.m.MessageToast.show(oBundle.getText("loteActualizadoAntesEliminar"));
-                }).catch(function () {
-                    sap.m.MessageBox.error(oBundle.getText("errorActualizarTrasEliminar"));
-                });
+                }).catch(function (oErr) {
+                    var sErrMsg = (oErr && oErr.responseJSON && (oErr.responseJSON.message || oErr.responseJSON.displayMessage)) || oBundle.getText("errorActualizarTrasEliminar");
+                    console.error("[putBatchSlotWC-delete] Error al eliminar slot:", oErr);
+                    sap.m.MessageBox.error(sErrMsg);
+                    this._refreshSlotsFromBackend();
+                }.bind(this));
             }.bind(this));
         },
         /**
@@ -1187,9 +1193,12 @@ sap.ui.define([
                 }, oSapApi).then(function () {
                     sap.m.MessageToast.show(oBundle.getText("slotActualizado"));
                     this._slotContext = null;
-                }.bind(this)).catch(function () {
-                    sap.m.MessageToast.show(oBundle.getText("errorActualizar"));
+                }.bind(this)).catch(function (oErr) {
+                    var sErrMsg = (oErr && oErr.responseJSON && (oErr.responseJSON.message || oErr.responseJSON.displayMessage)) || oBundle.getText("errorActualizar");
+                    console.error("[putBatchSlotWC-slotRow] Error al guardar slot:", oErr);
+                    sap.m.MessageToast.show(sErrMsg);
                     this._slotContext = null;
+                    this._refreshSlotsFromBackend();
                 }.bind(this));
             }.bind(this));
         },
@@ -1579,13 +1588,13 @@ sap.ui.define([
             });
         },
         setCustomValuesPp: function (oParams, oSapApi) {
-            return new Promise((resolve) => {
+            return new Promise((resolve, reject) => {
                 this.ajaxPostRequest(oSapApi + this.ApiPaths.putBatchSlotWorkCenter, oParams, function (oRes) {
                     resolve(oRes);
                 }.bind(this),
                     function (oRes) {
                         // Error callback
-                        resolve("Error");
+                        reject(oRes);
                     }.bind(this));
             });
         },
