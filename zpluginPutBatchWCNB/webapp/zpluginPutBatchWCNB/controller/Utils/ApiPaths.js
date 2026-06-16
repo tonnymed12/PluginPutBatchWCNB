@@ -27,8 +27,12 @@ sap.ui.define([],
 
         //  Searches for work centers by plant and work center values
         WORKCENTERS : "workcenter/v2/workcenters",
-        // Get Goods Issue summary results for an order, sfc, operationActivity, stepId and plant.
-        GOODSISSUES_SUMMARY: "processorder/v2/goodsIssue/summary"
+
+        //  Gets goods issue summary for consumed quantities by order/material
+        GOODSISSUES_SUMMARY: "processorder/v2/goodsIssue/summary",
+
+        //  Gets goods issues filtered by material/batch from inventory API
+        GOODSISSUES_SUMMARY_MATERIAL: "inventory/v2/inventory/goodsIssues",
 
 
 

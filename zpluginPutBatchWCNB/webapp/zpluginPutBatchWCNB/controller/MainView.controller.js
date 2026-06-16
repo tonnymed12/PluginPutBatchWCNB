@@ -26,6 +26,7 @@ sap.ui.define([
             this.iSecuenciaCounter = 0;  // Contador de secuencia para cada escaneo
             this.sAcActivity = "";       // Guardar valor AC_ACTIVITY del puesto
             this._aBomNormalComponents = [];  // Componentes NORMAL de la BOM para el popover de lotes
+            this._oCachedPODParams = null; // Cache de params para sobrevivir navegación fuera del POD
 
             // Modelo "orderSummary" 
             const oOrderSummaryModel = new JSONModel({
@@ -47,10 +48,15 @@ sap.ui.define([
         onGetCustomValues: function () {
             const oView = this.getView(),
                 oSapApi = this.getPublicApiRestDataSourceUri(),
-                oTable = oView.byId("idSlotTable"),
-                oPODParams = this.Commons.getPODParams(this.getOwnerComponent()),
-                url = oSapApi + this.ApiPaths.WORKCENTERS,
+                oTable = oView.byId("idSlotTable");
 
+            var oPODParams = this._getPODParamsWithCache();
+            if (!oPODParams) {
+                // Sin contexto y sin caché: no hay nada que cargar
+                return;
+            }
+
+            const url = oSapApi + this.ApiPaths.WORKCENTERS,
                 oParams = {
                     plant: oPODParams.PLANT_ID,
                     workCenter: oPODParams.WORK_CENTER
@@ -120,6 +126,13 @@ sap.ui.define([
                         value: "" // valor vacío para que después lo puedan llenar
                     });
                 }
+
+                // Normalizar: valores de solo espacios → "" (producidos por EM al limpiar slots en SAP)
+                aSlotsFixed.forEach(function (slot) {
+                    if (slot.value && slot.value.trim() === "") {
+                        slot.value = "";
+                    }
+                });
 
                 // Compactar si quedaron huecos tras una EM (slots vacíos antes de slots llenos)
                 var aConValorCarga = aSlotsFixed.filter(function (s) { return s.value && s.value.trim() !== ""; });
@@ -199,7 +212,6 @@ sap.ui.define([
             const oView = this.getView();
             const oInput = oView.byId("scanInput");
             const sBarcode = oInput.getValue().trim();
-            const oPODParams = this.Commons.getPODParams(this.getOwnerComponent());
             var oBundle = this.getView().getModel("i18n").getResourceBundle();
 
             if (!sBarcode) {
@@ -256,7 +268,8 @@ sap.ui.define([
             var oModel = oTable.getModel();
             var aItems = oModel.getProperty("/ITEMS") || [];
             var oBundle = oView.getModel("i18n").getResourceBundle();
-            var oPODParams = this.Commons.getPODParams(this.getOwnerComponent());
+            var oPODParams = this._getPODParamsWithCache();
+            if (!oPODParams) { sap.m.MessageToast.show(oBundle.getText("errorRefrescarSlots")); return; }
             var mandante = this.getConfiguration().mandante;
             var oSapApi = this.getPublicApiRestDataSourceUri();
             var urlLote = oSapApi + this.ApiPaths.getReservas;
@@ -328,8 +341,9 @@ sap.ui.define([
             const oTable = oView.byId("idSlotTable");
             const oScanInput = oView.byId("scanInput");
             const oModel = oTable.getModel();
-            const oPODParams = this.Commons.getPODParams(this.getOwnerComponent());
+            const oPODParams = this._getPODParamsWithCache();
             const oBundle = this.getView().getModel("i18n").getResourceBundle();
+            if (!oPODParams) { sap.m.MessageToast.show(oBundle.getText("errorRefrescarSlots")); return; }
 
             //obtener el modelo actual de la tabla 
             const aItems = oModel.getProperty("/ITEMS") || [];
@@ -446,7 +460,11 @@ sap.ui.define([
             const oView = this.getView();
             const oBundle = this.getView().getModel("i18n").getResourceBundle();
             const mandante = this.getConfiguration().mandante;
-            const oPODParams = this.Commons.getPODParams(this.getOwnerComponent());
+            const oPODParams = this._getPODParamsWithCache();
+            if (!oPODParams) {
+                sap.m.MessageToast.show(oBundle.getText("errorRefrescarSlots"));
+                return;
+            }
             const oInput = oView.byId("scanInput");
             const loteEscaneado = sLote;
             const materialEscaneado = sMaterial;
@@ -605,6 +623,20 @@ sap.ui.define([
             return isNaN(n) ? "" : n.toFixed(2);
         },
         /**
+         * Devuelve los POD params usando caché si el POD perdió contexto por navegación.
+         * @returns {Object|null} params o null si no hay contexto ni caché
+         */
+        _getPODParamsWithCache: function () {
+            var oPODParams = this.Commons.getPODParams(this.getOwnerComponent());
+            if (!oPODParams.WORK_CENTER && this._oCachedPODParams) {
+                return this._oCachedPODParams;
+            } else if (oPODParams.WORK_CENTER) {
+                this._oCachedPODParams = oPODParams;
+                return oPODParams;
+            }
+            return null;
+        },
+        /**
          * Refresca el modelo de la tabla consultando los customValues del puesto de trabajo desde el backend.
          * 
          * Este método garantiza que ANTES de cualquier operación de escritura (_ejecutarUpdate,
@@ -615,7 +647,8 @@ sap.ui.define([
             var oView = this.getView();
             var oSapApi = this.getPublicApiRestDataSourceUri();
             var oTable = oView.byId("idSlotTable");
-            var oPODParams = this.Commons.getPODParams(this.getOwnerComponent());
+            var oPODParams = this._getPODParamsWithCache();
+            if (!oPODParams) { return Promise.resolve(null); }
             var sParams = {
                 plant: oPODParams.PLANT_ID,
                 workCenter: oPODParams.WORK_CENTER
@@ -662,6 +695,13 @@ sap.ui.define([
                         value: ""
                     });
                 }
+
+                // Normalizar: valores de solo espacios → "" (producidos por EM al limpiar slots en SAP)
+                aSlotsFixed.forEach(function (slot) {
+                    if (slot.value && slot.value.trim() === "") {
+                        slot.value = "";
+                    }
+                });
 
                 // Restaurar loteQty y loteUom desde el modelo anterior (matching por material!lote)
                 aSlotsFixed.forEach(function (slot) {
@@ -749,8 +789,12 @@ sap.ui.define([
             // Usar el barcode capturado antes de la validación async (evita race condition
             // si el input fue limpiado mientras se esperaba la respuesta del servidor).
             const sBarcode = (sBarcodeIn || oInput.getValue()).trim();
-            const oPODParams = this.Commons.getPODParams(this.getOwnerComponent());
+            const oPODParams = this._getPODParamsWithCache();
             const oBundle = oView.getModel("i18n").getResourceBundle();
+            if (!oPODParams) {
+                sap.m.MessageToast.show(oBundle.getText("errorRefrescarSlots"));
+                return;
+            }
 
             // Refrescar desde backend antes de operar para evitar datos stale
             this._refreshSlotsFromBackend().then(function (oRefresh) {
@@ -880,8 +924,9 @@ sap.ui.define([
             const oView = this.getView();
             const oTable = this.byId("idSlotTable");
             const oModel = oTable.getModel();
-            const oPODParams = this.Commons.getPODParams(this.getOwnerComponent());
+            const oPODParams = this._getPODParamsWithCache();
             var oBundle = this.getView().getModel("i18n").getResourceBundle();
+            if (!oPODParams) { sap.m.MessageToast.show(oBundle.getText("errorRefrescarSlots")); return; }
 
             // Capturar el valor del slot a eliminar ANTES del refresh (la ref DOM puede cambiar)
             const oItem = oEvent.getSource().getParent();
@@ -1039,7 +1084,8 @@ sap.ui.define([
 
             const { sBarcode, slotAttribute } = this._slotContext;
             const oBundle = this.getView().getModel("i18n").getResourceBundle();
-            const oPODParams = this.Commons.getPODParams(this.getOwnerComponent());
+            const oPODParams = this._getPODParamsWithCache();
+            if (!oPODParams) { sap.m.MessageToast.show(oBundle.getText("errorRefrescarSlots")); this._slotContext = null; return; }
 
             // Refrescar desde backend antes de operar para evitar datos stale
             this._refreshSlotsFromBackend().then(function (oRefresh) {
@@ -1248,7 +1294,8 @@ sap.ui.define([
             this.unsubscribe("phaseSelectionEvent", this.onPhaseSelectionEventCustom, this);
         },
         setOrderSummary: function () {
-            const oPODParams = this.Commons.getPODParams(this.getOwnerComponent());
+            var oPODParams = this._getPODParamsWithCache();
+            if (!oPODParams) { return; }
             const oSapApi = this.getPublicApiRestDataSourceUri();
             const order = oPODParams.ORDER_ID;
             var oBundle = this.getView().getModel("i18n").getResourceBundle();
@@ -1336,27 +1383,98 @@ sap.ui.define([
             var oView = this.getView();
             var oSource = oEvent.getSource();
             var oBundle = oView.getModel("i18n").getResourceBundle();
+            var oPODParams = this._getPODParamsWithCache();
+            var oSapApi = this.getPublicApiRestDataSourceUri();
+            var self = this;
+
+            if (!oPODParams) {
+                sap.m.MessageToast.show(oBundle.getText("errorRefrescarSlots"));
+                return;
+            }
 
             if (!this._aBomNormalComponents || !this._aBomNormalComponents.length) {
                 sap.m.MessageToast.show(oBundle.getText("errorObtenerBom", [""]));
                 return;
             }
 
-            // Construir ítems directamente desde los componentes NORMAL de la BOM (sin llamada extra al backend)
-            var aItems = this._aBomNormalComponents.map(function (oComp) {
-                var sMat = (oComp.material && oComp.material.material) || "";
-                var sLote = oComp.batchNumber || "";
-                var nCantidad = parseFloat(oComp.totalQuantity || 0);
-                return {
-                    MATERIAL: sMat,
-                    LOTE: sLote,
-                    CANTIDAD: nCantidad.toFixed(2),
-                    CODIGO: sMat + "!" + sLote
-                };
+            // Filtrar lotes ya escaneados en la tabla
+            var oSlotTable = oView.byId("idSlotTable");
+            var aScannedSlots = (oSlotTable && oSlotTable.getModel())
+                ? (oSlotTable.getModel().getProperty("/ITEMS") || []) : [];
+            var oScannedSet = {};
+            aScannedSlots.forEach(function (slot) {
+                if (slot.value && slot.value.trim()) {
+                    oScannedSet[slot.value.toUpperCase().split("!").slice(0, 2).join("!")] = true;
+                }
             });
 
-            var fnPopulate = function (oDialog) {
-                oDialog.setModel(new JSONModel({ ITEMS: aItems }));
+            // Obtener material del primer componente BOM para la consulta GI
+            var sMaterialBom = (self._aBomNormalComponents[0].material && self._aBomNormalComponents[0].material.material) || "";
+
+            var fnBuildAndShow = function (oDialog) {
+                oDialog.setModel(new JSONModel({ ITEMS: [] }));
+                oDialog.setBusy(true);
+
+                var oGiParams = {
+                    order: oPODParams.ORDER_ID,
+                    material: sMaterialBom,
+                    materialVersion: "ERP001",
+                    plant: oPODParams.PLANT_ID,
+                    size: 500
+                };
+
+                self.getGoodsIssueSummaryMaterial(oGiParams, oSapApi).then(function (oGiRes) {
+                    // Construir mapa de consumo: batchNumber.toUpperCase() → cantidad total consumida
+                    var oConsumedMap = {};
+                    var aGiContent = (oGiRes && Array.isArray(oGiRes.content)) ? oGiRes.content
+                        : (Array.isArray(oGiRes) ? oGiRes : []);
+                    aGiContent.forEach(function (oGi) {
+                        if (oGi.postingType === "GI" && oGi.batchNumber) {
+                            var sKey = oGi.batchNumber.trim().toUpperCase();
+                            var nQty = parseFloat((oGi.quantityInBaseUnit && oGi.quantityInBaseUnit.value) || 0);
+                            oConsumedMap[sKey] = (oConsumedMap[sKey] || 0) + nQty;
+                        }
+                    });
+
+                    var aItems = self._aBomNormalComponents
+                        .filter(function (oComp) {
+                            var sMat = (oComp.material && oComp.material.material) || "";
+                            var sLote = oComp.batchNumber || "";
+                            // Excluir lotes ya escaneados en la tabla
+                            if (oScannedSet[(sMat + "!" + sLote).toUpperCase()]) { return false; }
+                            // Excluir lotes completamente consumidos
+                            var nTotal = parseFloat(oComp.totalQuantity || 0);
+                            var nConsumed = oConsumedMap[sLote.trim().toUpperCase()] || 0;
+                            return nConsumed < nTotal;
+                        })
+                        .map(function (oComp) {
+                            var sMat = (oComp.material && oComp.material.material) || "";
+                            var sLote = oComp.batchNumber || "";
+                            var nTotal = parseFloat(oComp.totalQuantity || 0);
+                            var nConsumed = oConsumedMap[sLote.trim().toUpperCase()] || 0;
+                            var nRemaining = Math.max(0, nTotal - nConsumed);
+                            return { MATERIAL: sMat, LOTE: sLote, CANTIDAD: nRemaining.toFixed(2), CODIGO: sMat + "!" + sLote };
+                        });
+
+                    oDialog.setBusy(false);
+                    oDialog.setModel(new JSONModel({ ITEMS: aItems }));
+                }).catch(function () {
+                    // Fallback si la API falla: mostrar lotes BOM sin filtro de consumo
+                    oDialog.setBusy(false);
+                    var aFallback = self._aBomNormalComponents
+                        .filter(function (oComp) {
+                            var sMat = (oComp.material && oComp.material.material) || "";
+                            var sLote = oComp.batchNumber || "";
+                            return !oScannedSet[(sMat + "!" + sLote).toUpperCase()];
+                        })
+                        .map(function (oComp) {
+                            var sMat = (oComp.material && oComp.material.material) || "";
+                            var sLote = oComp.batchNumber || "";
+                            var nQty = parseFloat(oComp.totalQuantity || 0);
+                            return { MATERIAL: sMat, LOTE: sLote, CANTIDAD: nQty.toFixed(2), CODIGO: sMat + "!" + sLote };
+                        });
+                    oDialog.setModel(new JSONModel({ ITEMS: aFallback }));
+                });
             };
 
             if (!this.byId("batchListDialog")) {
@@ -1366,13 +1484,13 @@ sap.ui.define([
                     controller: this
                 }).then(function (oPopover) {
                     oView.addDependent(oPopover);
-                    fnPopulate(oPopover);
                     oPopover.openBy(oSource);
+                    fnBuildAndShow(oPopover);
                 });
             } else {
                 var oDialog = this.byId("batchListDialog");
-                fnPopulate(oDialog);
                 oDialog.openBy(oSource);
+                fnBuildAndShow(oDialog);
             }
         },
         onConfirmSendBatchChars: function () {
@@ -1408,6 +1526,25 @@ sap.ui.define([
             if (oPopover && !oPopover.bIsDestroyed) {
                 oPopover.setBusy(false);
             }
+        },
+        getGoodsIssuesSummary: function (sParams, oSapApi) {
+            return new Promise((resolve, reject) => {
+                this.ajaxGetRequest(oSapApi + this.ApiPaths.GOODSISSUES_SUMMARY, sParams, function (oRes) {
+                    resolve(oRes);
+                }.bind(this),
+                    function (oRes) {
+                        reject(oRes);
+                    }.bind(this));
+            });
+        },
+        getGoodsIssueSummaryMaterial: function (sParams, oSapApi) {
+            return new Promise(function (resolve, reject) {
+                this.ajaxGetRequest(oSapApi + this.ApiPaths.GOODSISSUES_SUMMARY_MATERIAL, sParams, function (oRes) {
+                    resolve(oRes);
+                }.bind(this), function (oRes) {
+                    reject(oRes);
+                }.bind(this));
+            }.bind(this));
         },
         getHeaderMaterial: function (sParams, oSapApi) {
             return new Promise((resolve, reject) => {
