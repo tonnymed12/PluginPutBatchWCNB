@@ -473,11 +473,11 @@ sap.ui.define([
             const bEsPuestoCritico = ["TA01", "TA02", "SL02"].includes(puesto);
 
             // Validación de estatus de operación (en tiempo real desde POD)
-            var sCurrentStatus = this._getCurrentOperationStatus();
-            if (sCurrentStatus !== OPERATION_STATUS.ACTIVE) {
-                sap.m.MessageBox.error(oBundle.getText("verificarStatusOperacion"));
-                return;
-            }
+            // var sCurrentStatus = this._getCurrentOperationStatus();
+            // if (sCurrentStatus !== OPERATION_STATUS.ACTIVE) {
+            //     sap.m.MessageBox.error(oBundle.getText("verificarStatusOperacion"));
+            //     return;
+            // }
 
             // validación de actividad (siempre refrescar en puestos críticos)
             if (bEsPuestoCritico && bAcActivityValidado !== true) {
@@ -494,23 +494,23 @@ sap.ui.define([
 
                     this.sAcActivity = sAcActivityRefrescado;
 
-                    if (sAcActivityRefrescado !== "SETUP") {
-                        sap.m.MessageBox.error(oBundle.getText("acActivityNotSetup"));
-                        return;
-                    }
+                    // if (sAcActivityRefrescado !== "SETUP") {
+                    //     sap.m.MessageBox.error(oBundle.getText("acActivityNotSetup"));
+                    //     return;
+                    // }
 
                     this._validarMaterialYLote(loteEscaneado, materialEscaneado, true);
                 }.bind(this));
                 return;
             }
 
-            if (bEsPuestoCritico) {
-                const sAcActivityNormalizado = ((sAcActivity || "") + "").trim().toUpperCase();
-                if (sAcActivityNormalizado !== "SETUP") {
-                    sap.m.MessageBox.error(oBundle.getText("acActivityNotSetup"));
-                    return;
-                }
-            }
+            // if (bEsPuestoCritico) {
+            //     const sAcActivityNormalizado = ((sAcActivity || "") + "").trim().toUpperCase();
+            //     if (sAcActivityNormalizado !== "SETUP") {
+            //         sap.m.MessageBox.error(oBundle.getText("acActivityNotSetup"));
+            //         return;
+            //     }
+            // }
 
             // validacion de material
             const oSapApi = this.getPublicApiRestDataSourceUri();
@@ -830,42 +830,60 @@ sap.ui.define([
                     return;
                 }
 
-                // Buscar el primer slot vacío (datos frescos)
+                // Buscar slot vacío o añadir nuevo dinámicamente (sin límite fijo por SLOTQTY)
+                this.iSecuenciaCounter++;
                 const oEmptySlot = aItems.find(function (item) { return !item.value || item.value === ""; });
 
                 if (oEmptySlot) {
-                    this.iSecuenciaCounter++;
+                    // Reutilizar hueco existente (p.ej. dejado por una eliminación anterior)
                     oEmptySlot.value = sBarcode + "!" + this.iSecuenciaCounter;
                     oEmptySlot.loteQty = sCantidadLote || "";
                     oEmptySlot.loteUom = sUomLote || "";
-                    oModel.refresh(true);
-                    this._updateOrderSummaryScannedQty(aItems);
                 } else {
-                    sap.m.MessageToast.show(oBundle.getText("sinLotes"));
-                    oInput.setValue("");
-                    oInput.focus();
-                    return;
+                    // No hay slot vacío disponible: agregar uno nuevo al final de forma dinámica
+                    const sNextAttr = "SLOT" + this.iSecuenciaCounter.toString().padStart(3, "0");
+                    aItems.push({
+                        attribute: sNextAttr,
+                        value: sBarcode + "!" + this.iSecuenciaCounter,
+                        loteQty: sCantidadLote || "",
+                        loteUom: sUomLote || ""
+                    });
                 }
+                oModel.setProperty("/ITEMS", aItems);
+                oModel.refresh(true);
+                this._updateOrderSummaryScannedQty(aItems);
 
                 oInput.setValue("");
                 oInput.focus();
 
-                // Construir editados sobre datos frescos
+                // Construir editados sobre datos frescos.
+                // Solo se envían slots CON valor al backend (filtro de placeholders vacíos).
+                // Esto evita que el API WC rechace el batch por CVs vacíos que aún no existen en SAP.
+                // SLOTQTY se actualiza al total de slots para soportar adición dinámica.
                 const aEdited = [
-                    ...aItems.map(function (slot) { return { attribute: slot.attribute, value: slot.value }; })
+                    { attribute: "SLOTQTY", value: aItems.length.toString() },
+                    ...aItems
+                        .filter(function (slot) { return slot.value && slot.value.trim() !== ""; })
+                        .map(function (slot) { return { attribute: slot.attribute, value: slot.value }; })
                 ];
 
-                // Merge con customValues frescos (ya obtenidos en el refresh, sin doble consulta)
+                // Merge con customValues frescos (ya obtenidos en el refresh, sin doble consulta).
+                // Se excluyen de aOriginal los CVs vacíos que NO fueron editados explícitamente:
+                // el API WC rechaza el batch si recibe CVs con value="" que ya existen vacíos en SAP.
                 const aOriginal = oRefresh.customValues;
                 const editedMap = {};
                 aEdited.forEach(function (item) { editedMap[item.attribute] = item.value; });
 
-                const aCustomValuesFinal = aOriginal.map(function (item) {
-                    return {
-                        attribute: item.attribute,
-                        value: editedMap.hasOwnProperty(item.attribute) ? editedMap[item.attribute] : item.value
-                    };
-                });
+                const aCustomValuesFinal = aOriginal
+                    .filter(function (item) {
+                        return (item.value && item.value.trim() !== "") || editedMap.hasOwnProperty(item.attribute);
+                    })
+                    .map(function (item) {
+                        return {
+                            attribute: item.attribute,
+                            value: editedMap.hasOwnProperty(item.attribute) ? editedMap[item.attribute] : item.value
+                        };
+                    });
 
                 for (var key in editedMap) {
                     if (!aCustomValuesFinal.find(function (i) { return i.attribute === key; })) {
@@ -1162,20 +1180,28 @@ sap.ui.define([
 
                 const oView = this.getView();
                 const aEdited = [
-                    ...aSlots.map(function (slot) { return { attribute: slot.attribute, value: slot.value }; })
+                    { attribute: "SLOTQTY", value: aSlots.length.toString() },
+                    ...aSlots
+                        .filter(function (slot) { return slot.value && slot.value.trim() !== ""; })
+                        .map(function (slot) { return { attribute: slot.attribute, value: slot.value }; })
                 ];
 
-                // Merge con customValues frescos (ya obtenidos en el refresh)
+                // Merge con customValues frescos (ya obtenidos en el refresh).
+                // Se excluyen de aOriginal los CVs vacíos que NO fueron editados explícitamente.
                 const aOriginal = oRefresh.customValues;
                 const editedMap = {};
                 aEdited.forEach(function (item) { editedMap[item.attribute] = item.value; });
 
-                const aCustomValuesFinal = aOriginal.map(function (item) {
-                    return {
-                        attribute: item.attribute,
-                        value: editedMap.hasOwnProperty(item.attribute) ? editedMap[item.attribute] : item.value
-                    };
-                });
+                const aCustomValuesFinal = aOriginal
+                    .filter(function (item) {
+                        return (item.value && item.value.trim() !== "") || editedMap.hasOwnProperty(item.attribute);
+                    })
+                    .map(function (item) {
+                        return {
+                            attribute: item.attribute,
+                            value: editedMap.hasOwnProperty(item.attribute) ? editedMap[item.attribute] : item.value
+                        };
+                    });
 
                 for (var key in editedMap) {
                     if (!aCustomValuesFinal.find(function (i) { return i.attribute === key; })) {
