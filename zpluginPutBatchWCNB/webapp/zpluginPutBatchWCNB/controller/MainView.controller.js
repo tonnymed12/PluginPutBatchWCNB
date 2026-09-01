@@ -21,12 +21,15 @@ sap.ui.define([
 
         onInit: function () {
             PluginViewController.prototype.onInit.apply(this, arguments);
+            var oPODParams = this.Commons.getPODParams(this.getOwnerComponent());
+            var planta = oPODParams.PLANT_ID;
             this.oScanInput = this.byId("scanInput");
             this._oScanDebounceTimer = null;
             this.iSecuenciaCounter = 0;  // Contador de secuencia para cada escaneo
             this.sAcActivity = "";       // Guardar valor AC_ACTIVITY del puesto
             this._aBomNormalComponents = [];  // Componentes NORMAL de la BOM para el popover de lotes
             this._oCachedPODParams = null; // Cache de params para sobrevivir navegación fuera del POD
+            this.isMolinos = planta;  //guarda el puesto al iniciar 
 
             // Modelo "orderSummary" 
             const oOrderSummaryModel = new JSONModel({
@@ -43,8 +46,16 @@ sap.ui.define([
         onAfterRendering: function () {
             this.onGetCustomValues();
             this.setOrderSummary();
+            if (this.isMolinos == "1201" || this.isMolinos == "1202") {
+                this.setBotonBatches();
+            }
         },
+        setBotonBatches: function () {
+            const oView = this.getView();
+            const oButton = oView.byId("lotesBoton");
 
+            oButton.setVisible(false);
+        },
         onGetCustomValues: function () {
             const oView = this.getView(),
                 oSapApi = this.getPublicApiRestDataSourceUri(),
@@ -1463,9 +1474,9 @@ sap.ui.define([
                     this._oOperationActivityData = oData;
                     resolve({ customValues: oData.customValues || [] });
                 }.bind(this),
-                function () {
-                    resolve("Error");
-                }.bind(this));
+                    function () {
+                        resolve("Error");
+                    }.bind(this));
             }.bind(this));
         },
         /**
@@ -1488,9 +1499,9 @@ sap.ui.define([
                 this.ajaxPostRequest(oSapApi + this.ApiPaths.putBatchSlotOperationActivity, oPayload, function (oRes) {
                     resolve(oRes);
                 }.bind(this),
-                function (oRes) {
-                    reject(oRes);
-                }.bind(this));
+                    function (oRes) {
+                        reject(oRes);
+                    }.bind(this));
             }.bind(this));
         },
     });

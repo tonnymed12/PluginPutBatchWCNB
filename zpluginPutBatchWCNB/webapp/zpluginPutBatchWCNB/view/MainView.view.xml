@@ -47,19 +47,33 @@ height="100%">
                 </VBox>
                 <VBox width="15%" class="sapUiSmallMarginEnd">
                     <Label text="{i18n>cantidadNecesaria}"/>
-                    <Input id="orderCantidadNecesaria" value="{orderSummary>/cantidadNecesaria}" enabled="false" width="100%"/>
+                    <Input id="orderCantidadNecesaria" value="{
+                                            path: 'orderSummary>/cantidadNecesaria',
+                                            type: 'sap.ui.model.type.Float',
+                                            formatOptions: {
+                                                minFractionDigits: 0,
+                                                maxFractionDigits: 3,
+                                                groupingEnabled: true,
+                                                groupingSeparator: ','
+                                            }
+                                        }" enabled="false" width="100%"/>
                 </VBox>
                 <VBox width="15%" class="sapUiSmallMarginEnd">
+                    <Label text="{i18n>cantidadEscaneada}"/>
+                    <Input id="orderCantidadEscaneada" value="{
+                                            path: 'orderSummary>/cantidadEscaneada',
+                                            type: 'sap.ui.model.type.Float',
+                                            formatOptions: {
+                                                minFractionDigits: 0,
+                                                maxFractionDigits: 3,
+                                                groupingEnabled: true,
+                                                groupingSeparator: ','
+                                            }
+                                        }" enabled="false" width="100%"/> 
+                </VBox>
+                <VBox width="15%" >
                     <Label text="{i18n>unidadMedida}"/>
                     <Input id="orderUnidadMedida" value="{orderSummary>/unidadMedida}" enabled="false" width="100%"/>
-                </VBox>
-                <VBox width="15%">
-                    <Label text="{i18n>cantidadEscaneada}"/>
-                    <Input id="orderCantidadEscaneada" value="{orderSummary>/cantidadEscaneada}" enabled="false" width="100%"/>
-                </VBox>
-
-                <VBox width="15%">
-
                 </VBox>
             </HBox>
             
@@ -111,7 +125,7 @@ height="100%">
                             <Text text="{path: 'value', formatter: '.formatter.getSecuencia'}" enabled="false" />
                             <Input value="{path: 'value', formatter: '.formatter.getMaterial'}" enabled="false" />
                             <Input value="{path: 'value', formatter: '.formatter.getLote'}" enabled="false" />
-                            <ObjectAttribute text="{loteQty} {loteUom}" />
+                            <ObjectAttribute text="{loteQty} {loteUom}"  />
                             <Input value="{value}" enabled="false" visible="false"/>
                             <!-- <ndc:BarcodeScannerButton  
                                 scanSuccess=".onScanSlotSuccess"
