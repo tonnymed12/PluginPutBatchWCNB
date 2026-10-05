@@ -44,8 +44,10 @@ sap.ui.define([
 
         },
         onAfterRendering: function () {
-            this.onGetCustomValues();
-            this.setOrderSummary();
+            // Fallback si onBeforeRenderingPlugin no se ejecutó antes del primer render
+            if (!this._bOpenRefreshDone) {
+                this._refreshOnOpen();
+            }
             if (this.isMolinos == "1201" || this.isMolinos == "1202") {
                 this.setBotonBatches();
             }
@@ -56,7 +58,7 @@ sap.ui.define([
 
             oButton.setVisible(false);
         },
-        onGetCustomValues: function () {
+        onGetCustomValues: function (fnDone) {
             const oView = this.getView(),
                 oSapApi = this.getPublicApiRestDataSourceUri(),
                 oTable = oView.byId("idSlotTable");
@@ -135,6 +137,10 @@ sap.ui.define([
                     this.iSecuenciaCounter = maxSecuencia;
                 }
 
+                if (typeof fnDone === "function") {
+                    fnDone();
+                }
+
             }.bind(this));
         },
         onBarcodeSubmit: function () {
@@ -192,13 +198,34 @@ sap.ui.define([
          * consultando getReservas para cada lote escaneado. Solo lectura, no persiste nada.
          */
         onPressRefresh: function () {
+            this._refreshLoteQuantities(false);
+        },
+        /**
+         * Carga slots + resumen de la orden y luego refresca las cantidades escaneadas.
+         * Se ejecuta en el primer render, en cada re-apertura y al cambiar de fase.
+         */
+        _refreshOnOpen: function () {
+            this._bOpenRefreshDone = true;
+            this.onGetCustomValues(function () {
+                this._refreshLoteQuantities(true);
+            }.bind(this));
+            this.setOrderSummary();
+        },
+        /**
+         * @param {boolean} bSilent - true: sin mensajes toast (uso automático al abrir)
+         * @returns {Promise} resuelve al terminar el refresco
+         */
+        _refreshLoteQuantities: function (bSilent) {
             var oView = this.getView();
             var oTable = oView.byId("idSlotTable");
             var oModel = oTable.getModel();
-            var aItems = oModel.getProperty("/ITEMS") || [];
+            var aItems = (oModel && oModel.getProperty("/ITEMS")) || [];
             var oBundle = oView.getModel("i18n").getResourceBundle();
             var oPODParams = this._getPODParamsWithCache();
-            if (!oPODParams) { sap.m.MessageToast.show(oBundle.getText("errorRefrescarSlots")); return; }
+            if (!oPODParams) {
+                if (!bSilent) { sap.m.MessageToast.show(oBundle.getText("errorRefrescarSlots")); }
+                return Promise.resolve();
+            }
             var mandante = this.getConfiguration().mandante;
             var oSapApi = this.getPublicApiRestDataSourceUri();
             var urlLote = oSapApi + this.ApiPaths.getReservas;
@@ -209,8 +236,8 @@ sap.ui.define([
             });
 
             if (aSlotsConValor.length === 0) {
-                sap.m.MessageToast.show(oBundle.getText("sinLotesParaRefrescar"));
-                return;
+                if (!bSilent) { sap.m.MessageToast.show(oBundle.getText("sinLotesParaRefrescar")); }
+                return Promise.resolve();
             }
 
             oView.byId("idPluginPanel").setBusy(true);
@@ -245,11 +272,12 @@ sap.ui.define([
                 }.bind(this));
             }.bind(this));
 
-            Promise.all(aPromises).then(function (aResults) {
+            return Promise.all(aPromises).then(function (aResults) {
                 oView.byId("idPluginPanel").setBusy(false);
                 oModel.refresh(true);
                 this._updateOrderSummaryScannedQty(aItems);
 
+                if (bSilent) { return; }
                 var iFailed = aResults.filter(function (r) { return !r.ok; }).length;
                 if (iFailed > 0) {
                     sap.m.MessageToast.show(oBundle.getText("refreshParcial", [iFailed]));
@@ -1117,16 +1145,18 @@ sap.ui.define([
                 };
             }
 
-            this.subscribe("phaseSelectionEvent", this.onPhaseSelectionEventCustom, this);
-            this.onGetCustomValues();
+            if (!this._bPhaseSubscribed) {
+                this.subscribe("phaseSelectionEvent", this.onPhaseSelectionEventCustom, this);
+                this._bPhaseSubscribed = true;
+            }
+            this._refreshOnOpen();
         },
         onPhaseSelectionEventCustom: function (sChannelId, sEventId, oData) {
             if (this.isEventFiredByThisPlugin(oData)) {
                 return;
             }
             gOperationPhase = oData;
-            this.onGetCustomValues();
-            this.setOrderSummary();
+            this._refreshOnOpen();
 
         },
         isSubscribingToNotifications: function () {
@@ -1162,6 +1192,8 @@ sap.ui.define([
             PluginViewController.prototype.onExit.apply(this, arguments);
 
             this.unsubscribe("phaseSelectionEvent", this.onPhaseSelectionEventCustom, this);
+            this._bPhaseSubscribed = false;
+            this._bOpenRefreshDone = false;
         },
         setOrderSummary: function () {
             var oPODParams = this._getPODParamsWithCache();
