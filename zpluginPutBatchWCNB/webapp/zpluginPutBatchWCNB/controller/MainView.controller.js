@@ -38,7 +38,8 @@ sap.ui.define([
                 descripcion: "",
                 cantidadNecesaria: 0,
                 unidadMedida: "",
-                cantidadEscaneada: 0
+                cantidadEscaneada: 0,
+                cantidadConsumida: 0
             });
             this.getView().setModel(oOrderSummaryModel, "orderSummary");
 
@@ -1256,8 +1257,26 @@ sap.ui.define([
                             const oHeader = Array.isArray(headerData) ? headerData[0] : headerData;
                             const sDescripcion = (oHeader && oHeader.description) || "";
                             oOrderSummaryModel.setProperty("/descripcion", sDescripcion);
-
+                            // Consulta de cantidad consumida (Goods Issue); fallo silencioso
+                            return this.getGoodsIssuesSummary({
+                                plant: oPODParams.PLANT_ID,
+                                order: oPODParams.ORDER_ID,
+                                sfc: oPODParams.SFC,
+                                operationActivity: oPODParams.OPERATION_ACTIVITY,
+                                stepId: oPODParams.STEP_ID
+                            }, oSapApi).catch(function () { return null; });
                         }.bind(this))
+                        .then(function (oGoodsData) {
+                            var aLineItems = (oGoodsData && Array.isArray(oGoodsData.lineItems)) ? oGoodsData.lineItems : [];
+                            var oConsumoMap = {};
+                            aLineItems.forEach(function (oItem) {
+                                var sMat = (oItem.materialId && oItem.materialId.material) || "";
+                                var nConsumo = (oItem.consumedQuantity && oItem.consumedQuantity.value) || 0;
+                                if (sMat) { oConsumoMap[sMat.toUpperCase()] = nConsumo; }
+                            });
+                            oOrderSummaryModel.setProperty("/cantidadConsumida",
+                                oConsumoMap[(oOrderSummaryModel.getProperty("/material") || "").toUpperCase()] || 0);
+                        })
                         .catch(function (error) {
                             console.error("[OrderSummary Test] Error:", error);
                             sap.m.MessageToast.show(oBundle.getText("errorObtenerHeaderMaterial", [sMaterial]));
