@@ -1362,25 +1362,58 @@ sap.ui.define([
             }.bind(this));
         },
         /**
-         * Filtra (GI + POSTED_TO_TARGET_SYS), ordena por fecha desc y actualiza el modelo "consumos".
+         * Filtra (GI + POSTED_TO_TARGET_SYS), agrupa por material + lote + UOM (suma cantidades),
+         * ordena por el posting más reciente de cada lote (desc) y actualiza el modelo "consumos".
          * @returns {number} total consumido
          */
         _setConsumos: function (aContent) {
-            var aItems = (aContent || []).filter(function (oGi) {
+            var aPostings = (aContent || []).filter(function (oGi) {
                 return oGi && oGi.postingType === "GI" && oGi.postingStatus === "POSTED_TO_TARGET_SYS";
-            }).sort(function (a, b) {
-                return new Date(b.postingDateTime || 0) - new Date(a.postingDateTime || 0);
-            }).map(function (oGi) {
+            });
+            var oGroups = {};
+            var aGroups = [];
+            aPostings.forEach(function (oGi) {
                 var oQty = oGi.quantityInBaseUnit || {};
+                var sMaterial = oGi.material || "";
+                var sBatch = oGi.batchNumber || "";
+                var sUom = oQty.internalUnitOfMeasure || "";
+                var sKey = [sMaterial, sBatch, sUom].map(function (s) {
+                    return String(s).trim().toUpperCase();
+                }).join("|");
+                var nTime = new Date(oGi.postingDateTime || 0).getTime() || 0;
+                var oGroup = oGroups[sKey];
+                if (!oGroup) {
+                    oGroup = oGroups[sKey] = {
+                        batchNumber: sBatch,
+                        users: [],
+                        material: sMaterial,
+                        quantity: 0,
+                        uom: sUom,
+                        lastTime: nTime
+                    };
+                    aGroups.push(oGroup);
+                }
+                oGroup.quantity += Number(oQty.value) || 0;
+                oGroup.lastTime = Math.max(oGroup.lastTime, nTime);
+                if (oGi.postedBy && oGroup.users.indexOf(oGi.postedBy) === -1) {
+                    oGroup.users.push(oGi.postedBy);
+                }
+            });
+            var aItems = aGroups.sort(function (a, b) {
+                return b.lastTime - a.lastTime;
+            }).map(function (oGroup) {
                 return {
-                    batchNumber: oGi.batchNumber || "",
-                    postedBy: oGi.postedBy || "",
-                    material: oGi.material || "",
-                    quantity: Number(oQty.value) || 0,
-                    uom: oQty.internalUnitOfMeasure || ""
+                    batchNumber: oGroup.batchNumber,
+                    postedBy: oGroup.users.join(", "),
+                    material: oGroup.material,
+                    quantity: Number(oGroup.quantity.toFixed(3)),
+                    uom: oGroup.uom
                 };
             });
-            var nTotal = Number(aItems.reduce(function (n, o) { return n + o.quantity; }, 0).toFixed(3));
+            // Total sobre los postings filtrados (idéntico al cálculo previo a la agrupación)
+            var nTotal = Number(aPostings.reduce(function (n, oGi) {
+                return n + (Number((oGi.quantityInBaseUnit || {}).value) || 0);
+            }, 0).toFixed(3));
             var sUom = aItems.length ? aItems[0].uom : "";
             this.getView().getModel("consumos").setData({ ITEMS: aItems, total: nTotal, uom: sUom });
             this.getView().getModel("orderSummary").setProperty("/cantidadConsumidaLotes", nTotal);
