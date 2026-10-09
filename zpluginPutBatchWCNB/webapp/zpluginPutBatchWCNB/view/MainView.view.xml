@@ -151,6 +151,67 @@ height="100%">
                 </items>
             </Table>
             </HBox>      
+
+            <!-- Lotes consumidos (solo plantas distintas de 1301) -->
+            <HBox width="97%" justifyContent="Center" visible="{orderSummary>/mostrarConsumos}" class="sapUiSmallMarginTop sapUiSmallMarginBottom sapUiSmallMarginBeginEnd">
+            <Table id="idConsumosTable" items="{consumos>/ITEMS}" noDataText="{i18n>sinConsumos}"
+                class="sapUiSmallMarginTop" width="100%" alternateRowColors="true">
+                <headerToolbar>
+                    <Toolbar>
+                        <Title text="{i18n>lotesConsumidos}" />
+                        <ToolbarSpacer />
+                        <Label text="{i18n>totalConsumidoLotes}" />
+                        <ObjectNumber number="{
+                                            path: 'consumos>/total',
+                                            type: 'sap.ui.model.type.Float',
+                                            formatOptions: {
+                                                minFractionDigits: 0,
+                                                maxFractionDigits: 3,
+                                                groupingEnabled: true,
+                                                groupingSeparator: ','
+                                            }
+                                        }" unit="{consumos>/uom}" emphasized="true" class="sapUiSmallMarginBeginEnd" />
+                    </Toolbar>
+                </headerToolbar>
+                <columns>
+                    <Column width="20%" hAlign="Left" vAlign="Middle">
+                        <Text text="{i18n>loteCode}" />
+                    </Column>
+                    <Column width="25%" hAlign="Left" vAlign="Middle">
+                        <Text text="{i18n>usuario}" />
+                    </Column>
+                    <Column width="25%" hAlign="Left" vAlign="Middle">
+                        <Text text="{i18n>materialCode}" />
+                    </Column>
+                    <Column width="20%" hAlign="Right" vAlign="Middle">
+                        <Text text="{i18n>cantidad}" />
+                    </Column>
+                    <Column width="10%" hAlign="Left" vAlign="Middle">
+                        <Text text="{i18n>unidadMedida}" />
+                    </Column>
+                </columns>
+                <items>
+                    <ColumnListItem vAlign="Middle">
+                        <cells>
+                            <Text text="{consumos>batchNumber}" />
+                            <Text text="{consumos>postedBy}" />
+                            <Text text="{consumos>material}" />
+                            <Text text="{
+                                            path: 'consumos>quantity',
+                                            type: 'sap.ui.model.type.Float',
+                                            formatOptions: {
+                                                minFractionDigits: 0,
+                                                maxFractionDigits: 3,
+                                                groupingEnabled: true,
+                                                groupingSeparator: ','
+                                            }
+                                        }" />
+                            <Text text="{consumos>uom}" />
+                        </cells>
+                    </ColumnListItem>
+                </items>
+            </Table>
+            </HBox>
     </Panel>	
         
   
